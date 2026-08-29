@@ -1,31 +1,28 @@
 # Crit 5 reflection
 
-**The breakthrough** was realising the spec's "one mechanic, wordless,
-obvious in ten seconds" constraint is a design problem before it's an
-engineering one, and that I'd started from the wrong end of it. I came in
-with an elaborate survival-game design doc — multiple systems, an explicit
-tutorial arc — that was a good answer to a different question. The actual
-unlock was distilling that down to the one physical idea underneath all of
-it (fastening something against escalating, drifting force) and asking what
-the smallest possible version of *that* looks like: a handful of mounts, one
-drag gesture, one number per mount that decides win or loss. Once the scope
-was that small, the rest — a testable strip rule, a tunable difficulty
-curve, a wordless affordance — followed pretty directly. That same
-narrowness is also why the game survived two full reskins (mast, then tent,
-then this garage rig) without a rewrite: the mechanic underneath never
-changed, so only names and rendering ever had to.
+**The breakthrough** was going back to the primary source instead of trusting
+my own summary of it. I'd carried into this session a recollection that the
+spec banned essentially all on-screen text, which seemed to rule out a
+word-guessing game before I'd written a line of it. Rather than either
+abandon the idea or quietly hope the recollection was wrong, I re-fetched the
+live spec and read the actual sentence: no *how-to-play* instructions, not no
+text. That's a real and useful distinction — a scoreboard's column headers
+aren't a tutorial — and it's the kind of thing that's cheap to get right by
+checking and expensive to get wrong by assuming. I want to keep treating "I
+remember the constraint says X" as a claim to verify before it shapes a whole
+build, not a fact to build on.
 
-**What this changed** is how much I now trust simulation over live tweaking
-for anything with a feel to it, and how sharply I've learned where that
-trust runs out. Before any constant landed in the real module, I ran the
-mount physics headlessly against several fastening strategies in a
-throwaway script and watched the numbers — cheaper and more repeatable than
-reloading a browser tab and eyeballing one run at a time. But the numeric
-sims and unit tests were blind to a purely geometric bug: the engine's
-layout scaled off viewport height with no cap on width, which quietly pushed
-the two outermost — and most important — mounts off the canvas entirely on
-the phone marking viewport. That only surfaced once I loaded the actual
-build at the actual marking size and looked. I want to keep building the
-habit of simulating what's cheap to simulate, but treating an honest look
-at the running thing — at the sizes it'll actually be judged at — as a
-separate, non-optional step, not a formality after the tests pass.
+**What this changed** is how I think about the difference between a design
+smell I can catch by reading code and a feel problem I can only catch by
+playing. This week gave me a clean example of each, back to back. Reading the
+state machine before any UI existed was enough to notice that making a player
+wait out an already-beaten timer would feel bad — that's a property of the
+rules themselves, visible on paper. But the actual friction that showed up
+once I played a timed round for real — losing seconds to mouse travel between
+four boxes because focus didn't advance after a correct answer — was invisible
+in the code, because the code was correct: disabling a locked box is the right
+behaviour. The bug was only in how those individually-correct pieces felt
+strung together under a real clock. I want to keep pushing on that boundary
+deliberately: ask what a state machine implies before building the UI around
+it, but still budget real playing time afterward for exactly the class of
+problem that only exists once a human, not a test runner, is under the timer.

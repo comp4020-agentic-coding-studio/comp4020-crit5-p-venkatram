@@ -2,67 +2,82 @@
 
 ## What I built
 
-**Bolt the Engine**: an engine block sitting on a garage test rig, fastened
-down at four mounts, shaking harder as the throttle ramps up over the run —
-and drifting, so which mount is under the most strain keeps changing. The
-only verb is click-drag from a small parts palette (plentiful bolts, one
-scarce weld) onto a mount, which fastens it and instantly damps its shake; a
-weld stiffens a mount more than a bolt does, and there are fewer materials
-than mounts, so at least one always goes unfastened — a real decision about
-where to spend the scarce weld. Strip any one mount past its strain limit and
-the engine tips off the rig (loss); survive the full test window with every
-mount intact and the rig settles calm (win). No text, no instructions, on
-screen or off — the only affordances are the mounts' own colour and jitter,
-live every frame, telling you which one is in trouble right now.
+**Name, Place, Animal, Thing**: a letter reel that spins on click, landing on
+a letter that starts a mind map radiating from a central hub — Name, Place,
+Animal, Thing at the four corners, a countdown ring draining around the hub.
+The player has 25 seconds to type one word per category starting with that
+letter; a word already used for that category in an earlier round is
+rejected forever, so the game gets harder to play cleanly the longer a
+session runs. Filling all four boxes completes the round instantly and spins
+the reel back into play; letting the ring drain with any box still blank
+ends the session and shows the round count as a final score. A session
+persists through a reload; a corner refresh button and the loss screen
+itself both start over clean.
+
+This replaced an earlier, fully-shipped prototype in this same repo (an
+engine-block bracing game across three reskins — mast, tent, garage rig) that
+I abandoned entirely by request, in a clean checkpoint commit
+([`48e4900`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/48e4900))
+rather than a history rewrite, so the earlier work's process is still in this
+repo's log rather than erased.
 
 ## The moments that mattered
 
-1. **Renaming a tested mechanic without retesting the mechanic.** This game
-   went through two full reskins before landing here (a mast, then a tent,
-   then this rig), and each time the physics, the difficulty curve, and the
-   drag-and-fasten interaction stayed identical — only names and rendering
-   changed. The safety net was `spec/game.test.ts`: 26 tests, same count and
-   same shape before and after each rename, because the tests assert on the
-   *rule* (a mount stripping past its threshold, a weld out-stiffening a
-   bolt, a fastened mount's shake cutting instantly) rather than on names. If
-   a rename had silently changed behaviour, the tests would have caught it
-   immediately rather than requiring a fresh round of manual verification. Landed
-   in
-   [`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
+1. **Checking the actual spec text before building against a remembered
+   summary of it.** A word-based game reads, on first thought, like it might
+   collide with a "no instructions" constraint. Rather than build around a
+   recollection of that constraint, I re-fetched the live spec for this crit
+   and read its exact wording: the requirement is specifically no
+   how-to-play tutorial or instructions, not an absence of all text. Category
+   labels and a countdown are content the game is about — like a
+   scoreboard's column headers — not instructions on how to play it. That
+   distinction is what let this concept proceed at all, and it's a judgment
+   call the brief itself says gets settled by a stranger playing cold, not
+   by a test.
 
-2. **The one change that came from playing it, not reading it.** Every rule
-   and every constant passed `pnpm check` and a battery of simulated bracing
-   strategies before I ever looked at a rendered frame. But the mount layout
-   scaled the engine's width purely off viewport *height*
-   (`Math.min(height * 0.65, 640)`), with no cap tied to the available
-   *width*. At the phone marking viewport (390×844) that pushed the two
-   outermost mounts — the two the difficulty curve depends on being seen and
-   reached, since they're the most exposed to the drifting throttle — off
-   the edge of the canvas entirely. No unit test or type check could have
-   caught this; it only showed up in a headless screenshot of the actual
-   built page at the actual marking size. Fixed by capping the span at
-   `(width - paletteWidth()) * 0.85` as well, then re-verified with fresh
-   screenshots at both marking viewports confirming all four mounts are
-   visible and a drag onto an outer mount now lands. Also in
-   [`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
+2. **A design smell caught by reasoning, not by playing.** While designing
+   the round-completion flow, before writing any UI code, I noticed that
+   requiring a player to wait out the rest of an already-beaten 25-second
+   timer after filling the fourth box would feel unresponsive. Fixed in
+   [`9db3f9f`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/9db3f9f)
+   by having `submitWord` complete the round the instant the fourth word
+   lands, rather than leaving that to the next tick. This is deliberately
+   *not* the change credited to playing below — it came from reading the
+   state machine and thinking through what it would feel like, before there
+   was a page to click on.
 
-3. **Verifying an assumption before calling it a bug.** A screenshot pass
-   showed a weld placed during the wordless practice window seemingly vanish
-   moments later, with no rendering error to explain it. Rather than patch
-   the render code, I checked the state transition first: placing any
-   material during practice ends practice and resets the run to
-   `initialState()`, on purpose, so a practice placement never carries into
-   the scored run. Confirming that against the code before touching anything
-   saved a wasted fix for behaviour that was already correct.
+3. **The one change that came from playing it, not reading it.** Once the UI
+   existed, I played a full timed round against the real dev server — typing
+   real words at human speed, under the real 25-second clock, rather than
+   reasoning about the code. The friction showed up immediately: after each
+   accepted word, focus fell back to `<body>` instead of moving to the next
+   empty box, so finishing a round meant reaching for the mouse and clicking
+   into each of the next three boxes in turn. Nothing about that was wrong
+   in the code — disabling a locked box is correct — the problem only exists
+   once you're actually racing a countdown and losing seconds to mouse
+   travel. Fixed in
+   [`8b5815b`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/8b5815b)
+   by advancing focus to the next empty category (or back to the reel, once
+   a round completes) right after acceptance — deferred one frame, since
+   disabling the just-locked input blurs it back to `<body>` as a separate
+   step that would otherwise stomp on a synchronous `focus()` call. A round
+   is now playable start to finish from the keyboard alone.
 
 ## Verification
 
-`pnpm check` (typecheck, build, and all three test files) passes at
-[`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
+`pnpm check` (typecheck, build, and all three test files, 26 tests) passes
+at [`8b5815b`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/8b5815b).
+The focused automated rule is the loss condition — a round that reaches zero
+with any category still blank ends the session — alongside tests for word
+validation (must start with the round's letter, can never repeat for the
+same category, still valid for a different one) and session bookkeeping
+(`usedWords` persists across rounds, not just within one).
+
 Beyond the automated checks, I drove the built game with headless Chromium
 (outside this repo, not a dependency of it) at both of the course's marking
-viewports (1920×1080 desktop, 390×844 phone) to confirm, screenshot by
-screenshot: the wordless practice window resetting into the real run, the
-live drag line and mount colour/jitter feedback during an actual drag, a
-weld landing and visibly protecting a mount, and an under-fastened engine
-tipping off the rig — with all four mounts reachable on both viewports.
+viewports (1920×1080 desktop, 390×844 phone): the reel spinning and landing
+on a letter, a wrong-letter or already-used word visibly flashing and
+clearing with no text, a completed round instantly re-arming the reel, a
+drained ring with a blank box ending the session and showing the score, a
+mid-round reload restoring the exact same state, and the hard-refresh and
+loss-screen restart both returning to a clean session.
