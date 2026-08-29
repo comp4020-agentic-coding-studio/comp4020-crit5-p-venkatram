@@ -206,7 +206,6 @@ function render(gs: GameState): void {
     const entry = gs.entries[category];
     const locked = entry !== null;
     node.classList.toggle("locked", locked);
-    node.classList.remove("rejected");
     input.disabled = gs.phase !== "active" || locked;
     if (document.activeElement !== input) {
       input.value = entry ?? "";
@@ -222,6 +221,11 @@ function flashRejected(category: Category): void {
   // Force reflow so the animation restarts if it's still running.
   void node.offsetWidth;
   node.classList.add("rejected");
+  node.addEventListener(
+    "animationend",
+    () => node.classList.remove("rejected"),
+    { once: true },
+  );
 }
 
 // --- input handling ------------------------------------------------------

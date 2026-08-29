@@ -255,16 +255,15 @@ main {
 
 .lost-banner {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  border: none;
   display: none;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  background: rgba(10, 14, 30, 0.92);
-  padding: 1.5rem 2rem;
-  border-radius: 1rem;
+  background: rgba(10, 14, 30, 0.85);
+  border-radius: 1.5rem;
   cursor: pointer;
   z-index: 2;
 }
@@ -274,9 +273,20 @@ main {
 }
 
 .lost-banner .score {
-  font-size: clamp(2.2rem, 8vmin, 3.2rem);
+  font-size: clamp(3rem, 14vmin, 5rem);
   font-weight: 800;
   color: #ffd166;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 /* --- refresh --- */
