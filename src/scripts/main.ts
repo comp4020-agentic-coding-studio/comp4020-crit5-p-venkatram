@@ -1,4 +1,5 @@
 import {
+  abandonRound,
   CATEGORIES,
   hasLost,
   initialState,
@@ -138,6 +139,7 @@ const scoreLive = document.getElementById("score-live") as HTMLSpanElement;
 const historyList = document.getElementById("history-list") as HTMLOListElement;
 const lostBanner = document.getElementById("lost-banner") as HTMLButtonElement;
 const refreshButton = document.getElementById("refresh") as HTMLButtonElement;
+const endButton = document.getElementById("end-game") as HTMLButtonElement;
 
 const nodes = new Map<Category, HTMLDivElement>();
 const inputs = new Map<Category, HTMLInputElement>();
@@ -382,6 +384,22 @@ function handleRefreshClick(): void {
 
 refreshButton.addEventListener("click", handleRefreshClick);
 lostBanner.addEventListener("click", resetGame);
+
+// The dedicated "End" control always ends the session — the choice it
+// offers is whether that session survives to be resumed, not whether to
+// end at all (that's what Cancel on the confirm below is for).
+function handleEndClick(): void {
+  if (!window.confirm("End the game now?")) return;
+  if (window.confirm("Save your progress before ending?")) {
+    state = abandonRound(state);
+    save(state);
+    render(state);
+  } else {
+    resetGame();
+  }
+}
+
+endButton.addEventListener("click", handleEndClick);
 
 // --- main loop ------------------------------------------------------
 

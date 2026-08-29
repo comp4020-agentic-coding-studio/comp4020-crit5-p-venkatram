@@ -190,3 +190,18 @@ export function tick(state: GameState, dt: number): GameState {
 export function hasLost(state: GameState): boolean {
   return state.phase === "lost";
 }
+
+// A player-initiated quit mid-round, distinct from the clock running out:
+// nothing this round has typed counts against them (no history entry, no
+// loss), but any points already banked by submitWord for words accepted
+// this round stand, same as a near-miss.
+export function abandonRound(state: GameState): GameState {
+  if (state.phase !== "active") return state;
+  return {
+    ...state,
+    phase: "idle",
+    letter: null,
+    timeRemaining: ROUND_DURATION,
+    entries: emptyEntries(),
+  };
+}

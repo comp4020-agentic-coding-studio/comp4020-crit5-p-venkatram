@@ -471,9 +471,10 @@ main {
   text-overflow: ellipsis;
 }
 
-/* --- refresh --- */
+/* --- refresh / end --- */
 
-#refresh {
+#refresh,
+#end-game {
   position: fixed;
   top: 0.75rem;
   right: 0.75rem;
@@ -493,12 +494,25 @@ main {
     transform 0.15s;
 }
 
-#refresh:hover {
+#end-game {
+  right: 3.65rem;
+}
+
+#refresh:hover,
+#end-game:hover {
   color: #e8ecff;
+}
+
+#refresh:hover {
   transform: rotate(-25deg);
 }
 
-#refresh svg {
+#end-game:hover {
+  color: #f87171;
+}
+
+#refresh svg,
+#end-game svg {
   width: 1.2rem;
   height: 1.2rem;
   fill: currentColor;
