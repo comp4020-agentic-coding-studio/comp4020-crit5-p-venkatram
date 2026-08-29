@@ -1,4 +1,5 @@
 import { isKnownAnimal } from "./animals";
+import { isDictionaryWord } from "./dictionary";
 import { isKnownPlace } from "./places";
 
 export type Category = "name" | "place" | "animal" | "thing";
@@ -86,18 +87,28 @@ export function isValidWord(
   if (normalized[0] !== state.letter.toLowerCase()) return false;
   if (state.usedWords[category].has(normalized)) return false;
   // "Place" is the one category tied to a real-world checklist rather than
-  // free association — it must name an actual geographic place.
+  // free association — it must name an actual geographic place. A general
+  // English dictionary won't do here: country and city names are proper
+  // nouns, so a plain dictionary check would reject almost every real one.
   if (category === "place" && !isKnownPlace(normalized)) return false;
-  // "Animal" accepts animals, birds, and insects — but, like place, it has
-  // to be a real creature rather than any string that happens to start with
-  // the right letter.
-  if (category === "animal" && !isKnownAnimal(normalized)) return false;
-  // A thing is explicitly not a name, a place, or an animal: reject a
-  // "thing" that just reuses this round's own name/place/animal answer, or
-  // that happens to be a recognised place name.
+  // "Animal" accepts animals, birds, and insects — checked against both a
+  // real dictionary (so it's an actual word, not just letters) and a
+  // curated list of real creatures (so it's actually one of those three).
+  if (
+    category === "animal" &&
+    (!isDictionaryWord(normalized) || !isKnownAnimal(normalized))
+  ) {
+    return false;
+  }
+  // "Thing" has no category-specific list of its own, so a real dictionary
+  // is what keeps it from being any arbitrary string — plus it's explicitly
+  // not a name, a place, or an animal: reject a "thing" that just reuses
+  // this round's own name/place/animal answer, or that happens to be a
+  // recognised place name.
   if (
     category === "thing" &&
-    (isKnownPlace(normalized) ||
+    (!isDictionaryWord(normalized) ||
+      isKnownPlace(normalized) ||
       normalized === state.entries.name ||
       normalized === state.entries.place ||
       normalized === state.entries.animal)

@@ -21,15 +21,18 @@ function activeState(letter = "A"): GameState {
   return startRound(initialState(), letter);
 }
 
-// "place" and "animal" are each checked against a real-world list, so a
-// synthetic "A-place"/"A-animal" word won't do — name and thing stay
-// free-form.
+// "place" and "animal" are each checked against a real-world list, and
+// "thing" against a real dictionary, so synthetic "A-place"/"A-animal"/
+// "A-thing" words won't do — only "name" stays free-form.
 function wordFor(category: Category, letter: string): string {
   if (category === "place") {
     return letter.toUpperCase() === "A" ? "Argentina" : "Athens";
   }
   if (category === "animal") {
     return letter.toUpperCase() === "A" ? "Ant" : "Antelope";
+  }
+  if (category === "thing") {
+    return letter.toUpperCase() === "A" ? "Anchor" : "Axe";
   }
   return `${letter}-${category}`;
 }
@@ -200,7 +203,7 @@ describe("scoring and history", () => {
     expect(state.history).toEqual([
       {
         letter: "A",
-        entries: { name: "a-name", place: "argentina", animal: "ant", thing: "a-thing" },
+        entries: { name: "a-name", place: "argentina", animal: "ant", thing: "anchor" },
       },
     ]);
   });
