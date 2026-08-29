@@ -36,12 +36,11 @@ describe("the loss rule (play can be lost)", () => {
     expect(hasLost(state)).toBe(true);
   });
 
-  it("does not lose, and starts a fresh round, if all four are filled before time runs out", () => {
+  it("completes the round immediately once all four are filled, before time runs out", () => {
     let state = activeState();
     for (const category of CATEGORIES) {
       state = submitWord(state, category, `A-${category}`).state;
     }
-    state = tick(state, ROUND_DURATION);
     expect(hasLost(state)).toBe(false);
     expect(state.phase).toBe("idle");
     expect(state.roundsCompleted).toBe(1);
@@ -59,9 +58,8 @@ describe("word validation", () => {
   it("rejects a word already used for that category, case-insensitively", () => {
     let state = activeState("A");
     for (const category of CATEGORIES) {
-      state = submitWord(state, category, `A-${category}`).state;
+      state = submitWord(state, category, `A-${category}`).state; // completes round 1
     }
-    state = tick(state, ROUND_DURATION); // completes round 1
     state = startRound(state, "A");
     const result = submitWord(state, "name", "A-NAME");
     expect(result.accepted).toBe(false);
@@ -95,9 +93,8 @@ describe("session bookkeeping", () => {
   it("carries usedWords across rounds, not just within one", () => {
     let state = activeState("A");
     for (const category of CATEGORIES) {
-      state = submitWord(state, category, `A-${category}`).state;
+      state = submitWord(state, category, `A-${category}`).state; // completes round 1
     }
-    state = tick(state, ROUND_DURATION);
     state = startRound(state, "A");
     const result = submitWord(state, "name", "A-name");
     expect(result.accepted).toBe(false);

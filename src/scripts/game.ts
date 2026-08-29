@@ -65,6 +65,21 @@ export function isValidWord(
   return true;
 }
 
+function isRoundComplete(state: GameState): boolean {
+  return CATEGORIES.every((category) => state.entries[category] !== null);
+}
+
+function completeRound(state: GameState): GameState {
+  return {
+    ...state,
+    phase: "idle",
+    letter: null,
+    timeRemaining: ROUND_DURATION,
+    entries: emptyEntries(),
+    roundsCompleted: state.roundsCompleted + 1,
+  };
+}
+
 export function submitWord(
   state: GameState,
   category: Category,
@@ -77,27 +92,22 @@ export function submitWord(
     [category]: new Set(state.usedWords[category]).add(normalized),
   };
   const entries = { ...state.entries, [category]: normalized };
-  return { state: { ...state, usedWords, entries }, accepted: true };
+  const next = { ...state, usedWords, entries };
+  // The fourth word completes the round the instant it lands — no reason to
+  // make the player wait out a clock that's already been beaten.
+  return {
+    state: isRoundComplete(next) ? completeRound(next) : next,
+    accepted: true,
+  };
 }
 
-function isRoundComplete(state: GameState): boolean {
-  return CATEGORIES.every((category) => state.entries[category] !== null);
-}
-
+// By the time this is called with time already at zero, a round that was
+// completed has already left "active" via submitWord above — so reaching
+// zero here can only mean a category was left blank.
 export function tick(state: GameState, dt: number): GameState {
   if (state.phase !== "active") return state;
   const timeRemaining = Math.max(0, state.timeRemaining - dt);
   if (timeRemaining > 0) return { ...state, timeRemaining };
-  if (isRoundComplete(state)) {
-    return {
-      ...state,
-      phase: "idle",
-      letter: null,
-      timeRemaining: ROUND_DURATION,
-      entries: emptyEntries(),
-      roundsCompleted: state.roundsCompleted + 1,
-    };
-  }
   return { ...state, timeRemaining: 0, phase: "lost" };
 }
 
