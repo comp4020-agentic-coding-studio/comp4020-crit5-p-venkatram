@@ -1,6 +1,17 @@
+import { isKnownAnimal } from "./animals";
+import { isKnownPlace } from "./places";
+
 export type Category = "name" | "place" | "animal" | "thing";
 export const CATEGORIES: Category[] = ["name", "place", "animal", "thing"];
 export const ROUND_DURATION = 25; // seconds
+
+// A completed round's words, kept for display so a player can look back at
+// what they've already said this session instead of it vanishing the moment
+// the next round starts.
+export interface RoundRecord {
+  letter: string;
+  entries: Record<Category, string>;
+}
 
 export interface GameState {
   phase: "idle" | "active" | "lost";
@@ -12,6 +23,11 @@ export interface GameState {
   // that category rather than just within one round.
   usedWords: Record<Category, Set<string>>;
   roundsCompleted: number;
+  // Ten points per accepted word, whether or not its round is ever completed
+  // -- this is the number shown to the player as their score.
+  score: number;
+  // One entry per *completed* round, most recent last.
+  history: RoundRecord[];
 }
 
 function emptyEntries(): Record<Category, string | null> {
@@ -31,6 +47,8 @@ export function initialState(): GameState {
       thing: new Set(),
     },
     roundsCompleted: 0,
+    score: 0,
+    history: [],
   };
 }
 
@@ -51,6 +69,11 @@ function normalize(word: string): string {
   return word.trim().toLowerCase();
 }
 
+// A single letter ("T") technically starts with the round's letter and has
+// never been used, but it isn't a word — found by actually typing one in.
+const MIN_WORD_LENGTH = 2;
+const POINTS_PER_WORD = 10;
+
 export function isValidWord(
   state: GameState,
   category: Category,
@@ -59,9 +82,28 @@ export function isValidWord(
   if (state.phase !== "active" || !state.letter) return false;
   if (state.entries[category] !== null) return false; // already locked in
   const normalized = normalize(word);
-  if (!normalized) return false;
+  if (normalized.length < MIN_WORD_LENGTH) return false;
   if (normalized[0] !== state.letter.toLowerCase()) return false;
   if (state.usedWords[category].has(normalized)) return false;
+  // "Place" is the one category tied to a real-world checklist rather than
+  // free association — it must name an actual geographic place.
+  if (category === "place" && !isKnownPlace(normalized)) return false;
+  // "Animal" accepts animals, birds, and insects — but, like place, it has
+  // to be a real creature rather than any string that happens to start with
+  // the right letter.
+  if (category === "animal" && !isKnownAnimal(normalized)) return false;
+  // A thing is explicitly not a name, a place, or an animal: reject a
+  // "thing" that just reuses this round's own name/place/animal answer, or
+  // that happens to be a recognised place name.
+  if (
+    category === "thing" &&
+    (isKnownPlace(normalized) ||
+      normalized === state.entries.name ||
+      normalized === state.entries.place ||
+      normalized === state.entries.animal)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -69,7 +111,19 @@ function isRoundComplete(state: GameState): boolean {
   return CATEGORIES.every((category) => state.entries[category] !== null);
 }
 
+// Used both when all four are in (submitWord) and when the clock ran out
+// with only three (tick) — a blank field is recorded as "" rather than
+// asserted non-null.
 function completeRound(state: GameState): GameState {
+  const record: RoundRecord = {
+    letter: state.letter!,
+    entries: {
+      name: state.entries.name ?? "",
+      place: state.entries.place ?? "",
+      animal: state.entries.animal ?? "",
+      thing: state.entries.thing ?? "",
+    },
+  };
   return {
     ...state,
     phase: "idle",
@@ -77,6 +131,7 @@ function completeRound(state: GameState): GameState {
     timeRemaining: ROUND_DURATION,
     entries: emptyEntries(),
     roundsCompleted: state.roundsCompleted + 1,
+    history: [...state.history, record],
   };
 }
 
@@ -92,7 +147,7 @@ export function submitWord(
     [category]: new Set(state.usedWords[category]).add(normalized),
   };
   const entries = { ...state.entries, [category]: normalized };
-  const next = { ...state, usedWords, entries };
+  const next = { ...state, usedWords, entries, score: state.score + POINTS_PER_WORD };
   // The fourth word completes the round the instant it lands — no reason to
   // make the player wait out a clock that's already been beaten.
   return {
@@ -101,14 +156,21 @@ export function submitWord(
   };
 }
 
-// By the time this is called with time already at zero, a round that was
-// completed has already left "active" via submitWord above — so reaching
-// zero here can only mean a category was left blank.
+// By the time this is called with time already at zero, a round with all
+// four filled has already left "active" via submitWord above — so reaching
+// zero here always means at least one category was left blank. Three out of
+// four is close enough to let through: the round still ends and its points
+// (already banked by submitWord) stand, but only fewer than three costs the
+// game.
 export function tick(state: GameState, dt: number): GameState {
   if (state.phase !== "active") return state;
   const timeRemaining = Math.max(0, state.timeRemaining - dt);
   if (timeRemaining > 0) return { ...state, timeRemaining };
-  return { ...state, timeRemaining: 0, phase: "lost" };
+  const filledCount = CATEGORIES.filter(
+    (category) => state.entries[category] !== null,
+  ).length;
+  if (filledCount < 3) return { ...state, timeRemaining: 0, phase: "lost" };
+  return completeRound({ ...state, timeRemaining: 0 });
 }
 
 export function hasLost(state: GameState): boolean {

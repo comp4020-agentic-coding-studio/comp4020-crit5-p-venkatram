@@ -8,6 +8,7 @@ import {
   tick,
   type Category,
   type GameState,
+  type RoundRecord,
 } from "./game";
 
 const STORAGE_KEY = "npat-game-v1";
@@ -26,6 +27,8 @@ interface StoredState {
   entries: GameState["entries"];
   usedWords: Record<Category, string[]>;
   roundsCompleted: number;
+  score: number;
+  history: RoundRecord[];
 }
 
 function serialize(state: GameState): string {
@@ -105,19 +108,34 @@ function playLoss(): void {
   playTone(220, 0.5, "sawtooth");
 }
 
+// One tick per letter the reel passes, exactly like a real slot machine's
+// mechanical click — reusing the animation's own easing means the ticks
+// naturally decelerate into the landing instead of needing a separate timer.
+function playTick(): void {
+  playTone(900, 0.03, "square");
+}
+
+function playLanding(): void {
+  playTone(523, 0.08, "triangle");
+  setTimeout(() => playTone(784, 0.15, "triangle"), 70);
+}
+
 document.addEventListener("pointerdown", ensureAudio, { once: true });
 document.addEventListener("keydown", ensureAudio, { once: true });
 
 // --- DOM references ------------------------------------------------------
 
 const app = document.getElementById("app") as HTMLDivElement;
-const reel = document.getElementById("reel") as HTMLButtonElement;
+// The hub circle doubles as the letter picker: clicking it spins the strip
+// of letters inside it, exactly like pulling a slot machine's lever.
+const hub = document.getElementById("hub") as HTMLButtonElement;
 const reelStrip = document.getElementById("reel-strip") as HTMLDivElement;
-const hubLetter = document.getElementById("hub-letter") as HTMLSpanElement;
 const ringProgress = document.getElementById(
   "ring-progress",
 ) as unknown as SVGCircleElement;
 const scoreEl = document.getElementById("score") as HTMLSpanElement;
+const scoreLive = document.getElementById("score-live") as HTMLSpanElement;
+const historyList = document.getElementById("history-list") as HTMLOListElement;
 const lostBanner = document.getElementById("lost-banner") as HTMLButtonElement;
 const refreshButton = document.getElementById("refresh") as HTMLButtonElement;
 
@@ -148,6 +166,8 @@ let spinFrom = 0;
 let spinTo = 0;
 let spinStart = 0;
 let pendingLetter: string | null = null;
+let pendingLetterIndex = 0;
+let lastTickIndex = 0;
 
 function measureLetterHeight(): void {
   const first = reelStrip.firstElementChild as HTMLElement | null;
@@ -165,9 +185,10 @@ function easeOutCubic(t: number): number {
 function startSpin(): void {
   if (spinning || state.phase !== "idle" || letterHeight === 0) return;
   spinning = true;
-  reel.disabled = true;
+  hub.disabled = true;
   const letterIndex = Math.floor(Math.random() * ALPHABET.length);
   pendingLetter = ALPHABET[letterIndex];
+  pendingLetterIndex = letterIndex;
   const cycleHeight = ALPHABET.length * letterHeight;
   const currentInCycle = reelOffset % cycleHeight;
   const targetInCycle = letterIndex * letterHeight;
@@ -175,9 +196,10 @@ function startSpin(): void {
   spinFrom = reelOffset;
   spinTo = reelOffset + cycleHeight * 3 + delta;
   spinStart = performance.now();
+  lastTickIndex = Math.floor(spinFrom / letterHeight);
 }
 
-reel.addEventListener("click", startSpin);
+hub.addEventListener("click", startSpin);
 
 // --- rendering ------------------------------------------------------
 
@@ -193,11 +215,49 @@ function updateRing(gs: GameState): void {
   }
 }
 
+// Words are stored lowercased (that's what keeps "Apple"/"apple" the same
+// entry for dedup purposes) — capitalized only at the point of display.
+function displayWord(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+let renderedHistoryLength = -1;
+
+function renderHistory(gs: GameState): void {
+  if (gs.history.length === renderedHistoryLength) return;
+  renderedHistoryLength = gs.history.length;
+  historyList.innerHTML = "";
+  for (const record of [...gs.history].reverse()) {
+    const item = document.createElement("li");
+    item.className = "history-item";
+
+    const badge = document.createElement("span");
+    badge.className = "history-letter";
+    badge.textContent = record.letter;
+    item.appendChild(badge);
+
+    for (const category of CATEGORIES) {
+      const cell = document.createElement("span");
+      cell.className = "history-cell";
+      const word = displayWord(record.entries[category]);
+      cell.textContent = word;
+      // Longer place names (e.g. "Papua New Guinea") get ellipsised in the
+      // narrow grid column — the full word is still there on hover.
+      if (word) cell.title = word;
+      item.appendChild(cell);
+    }
+
+    historyList.appendChild(item);
+  }
+}
+
 function render(gs: GameState): void {
   app.classList.toggle("lost", gs.phase === "lost");
-  reel.disabled = gs.phase !== "idle" || spinning;
-  hubLetter.textContent = gs.letter ?? "";
-  scoreEl.textContent = String(gs.roundsCompleted);
+  app.classList.toggle("active", gs.phase === "active");
+  hub.disabled = gs.phase !== "idle" || spinning;
+  scoreEl.textContent = String(gs.score);
+  scoreLive.textContent = String(gs.score);
+  renderHistory(gs);
   updateRing(gs);
 
   for (const category of CATEGORIES) {
@@ -208,7 +268,7 @@ function render(gs: GameState): void {
     node.classList.toggle("locked", locked);
     input.disabled = gs.phase !== "active" || locked;
     if (document.activeElement !== input) {
-      input.value = entry ?? "";
+      input.value = entry !== null ? displayWord(entry) : "";
     }
   }
 }
@@ -240,7 +300,7 @@ function focusNext(gs: GameState): void {
     const next = CATEGORIES.find((category) => gs.entries[category] === null);
     if (next) inputs.get(next)!.focus();
   } else if (gs.phase === "idle") {
-    reel.focus();
+    hub.focus();
   }
 }
 
@@ -283,7 +343,20 @@ function resetGame(): void {
   render(state);
 }
 
-refreshButton.addEventListener("click", resetGame);
+// Only a round in progress has anything worth losing — the timer's already
+// autosaving it every second, so refreshing from "idle" or "lost" just
+// starts clean with nothing to confirm.
+function handleRefreshClick(): void {
+  if (
+    state.phase === "active" &&
+    !window.confirm("Abandon this round and lose your unsaved progress?")
+  ) {
+    return;
+  }
+  resetGame();
+}
+
+refreshButton.addEventListener("click", handleRefreshClick);
 lostBanner.addEventListener("click", resetGame);
 
 // --- main loop ------------------------------------------------------
@@ -304,11 +377,19 @@ function frame(now: number): void {
     const t = Math.min(1, elapsed / SPIN_DURATION_MS);
     reelOffset = spinFrom + (spinTo - spinFrom) * easeOutCubic(t);
     applyReelTransform(reelOffset);
+    const tickIndex = Math.floor(reelOffset / letterHeight);
+    if (tickIndex !== lastTickIndex) {
+      lastTickIndex = tickIndex;
+      playTick();
+    }
     if (t >= 1) {
       spinning = false;
-      const cycleHeight = ALPHABET.length * letterHeight;
-      reelOffset = reelOffset % cycleHeight;
+      // Snap to the exact letter row rather than trusting the eased
+      // interpolation's final float — the slot has to land on a precise
+      // letter, never a pixel between two.
+      reelOffset = pendingLetterIndex * letterHeight;
       applyReelTransform(reelOffset);
+      playLanding();
       if (pendingLetter) {
         state = startRound(state, pendingLetter);
         pendingLetter = null;
@@ -329,7 +410,6 @@ function frame(now: number): void {
       playLoss();
     }
     updateRing(state);
-    scoreEl.textContent = String(state.roundsCompleted);
     if (now - lastSave > 1000) {
       save(state);
       lastSave = now;
