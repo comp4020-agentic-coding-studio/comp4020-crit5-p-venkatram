@@ -124,6 +124,46 @@ function playLanding(): void {
 document.addEventListener("pointerdown", ensureAudio, { once: true });
 document.addEventListener("keydown", ensureAudio, { once: true });
 
+// A quiet looping arpeggio for the duration of a round — same procedural,
+// no-asset approach as the sound effects above, just sustained instead of
+// one-shot. Kept soft (a lower gain than the effects) so it sits behind
+// accept/reject/tick rather than competing with them.
+const MUSIC_NOTES = [392, 466.16, 523.25, 466.16, 392, 349.23, 392, 466.16];
+const MUSIC_STEP_MS = 280;
+let musicTimer: ReturnType<typeof setInterval> | null = null;
+let musicStep = 0;
+
+function playMusicNote(freq: number): void {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  const t = audioCtx.currentTime;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(0.045, t + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + MUSIC_STEP_MS / 1000);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + MUSIC_STEP_MS / 1000);
+}
+
+function startMusic(): void {
+  if (musicTimer || !audioCtx) return;
+  musicStep = 0;
+  musicTimer = setInterval(() => {
+    playMusicNote(MUSIC_NOTES[musicStep % MUSIC_NOTES.length]);
+    musicStep++;
+  }, MUSIC_STEP_MS);
+}
+
+function stopMusic(): void {
+  if (musicTimer) {
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+}
+
 // --- DOM references ------------------------------------------------------
 
 const app = document.getElementById("app") as HTMLDivElement;
@@ -444,6 +484,13 @@ function frame(now: number): void {
     reelOffset = (reelOffset + IDLE_SPEED_PX_S * dt) % cycleHeight;
     applyReelTransform(reelOffset);
   }
+
+  // Every possible way out of "active" — win, loss, an abandoned round, or
+  // a hard reset — is a state change rather than a DOM event, so syncing
+  // music to phase here (instead of at each call site) is what catches
+  // all of them without missing one.
+  if (state.phase === "active") startMusic();
+  else stopMusic();
 
   if (state.phase === "active") {
     state = tick(state, dt);
