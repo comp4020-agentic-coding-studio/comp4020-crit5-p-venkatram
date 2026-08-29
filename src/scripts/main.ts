@@ -230,6 +230,20 @@ function flashRejected(category: Category): void {
 
 // --- input handling ------------------------------------------------------
 
+// Found by actually playing a timed round rather than reading the code: with
+// four separate boxes and a 25s clock, having to reach for the mouse and
+// click into each next box in turn burns real seconds and breaks the flow of
+// typing. Advancing focus on acceptance keeps a round playable end-to-end
+// from the keyboard.
+function focusNext(gs: GameState): void {
+  if (gs.phase === "active") {
+    const next = CATEGORIES.find((category) => gs.entries[category] === null);
+    if (next) inputs.get(next)!.focus();
+  } else if (gs.phase === "idle") {
+    reel.focus();
+  }
+}
+
 function attemptSubmit(category: Category, input: HTMLInputElement): void {
   const value = input.value.trim();
   if (!value || state.phase !== "active") return;
@@ -243,6 +257,13 @@ function attemptSubmit(category: Category, input: HTMLInputElement): void {
   }
   save(state);
   render(state);
+  // Deferred a frame: disabling the just-locked input (inside render, above)
+  // blurs it back to <body> as a separate step, which would otherwise stomp
+  // on a focus() called synchronously here.
+  if (result.accepted) {
+    const finishedState = state;
+    requestAnimationFrame(() => focusNext(finishedState));
+  }
 }
 
 for (const [category, input] of inputs) {
