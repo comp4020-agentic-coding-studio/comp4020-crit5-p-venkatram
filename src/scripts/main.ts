@@ -37,7 +37,10 @@ function mastX() {
   return width * 0.5;
 }
 function mastLength() {
-  return Math.min(height * 0.55, 420);
+  // Height-relative so the mast reads as a proper structure rather than a
+  // tick mark on a large desktop viewport (found by playing it at the real
+  // 1920x1080 marking viewport, not visible when testing at a smaller window).
+  return Math.min(height * 0.6, 600);
 }
 
 type Phase = "playing" | "snapped" | "won";
