@@ -3,10 +3,19 @@ body {
   margin: 0;
   height: 100%;
   background: #0a0e1e;
+  color: #e8ecff;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
 }
 
 main {
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .visually-hidden {
@@ -19,4 +28,281 @@ main {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+#app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.75rem, 3vmin, 2rem);
+  padding: clamp(0.75rem, 3vmin, 2rem);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* --- reel --- */
+
+#reel {
+  appearance: none;
+  border: none;
+  background: #141a33;
+  border-radius: 999px;
+  padding: 0.4rem 1.4rem;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px #2c3766 inset;
+  transition: box-shadow 0.15s;
+}
+
+#reel:hover {
+  box-shadow: 0 0 0 2px #4a5aa8 inset;
+}
+
+#reel:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#reel-window {
+  height: clamp(2.2rem, 6vmin, 3.2rem);
+  overflow: hidden;
+  width: clamp(2.2rem, 6vmin, 3.2rem);
+}
+
+#reel-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  will-change: transform;
+}
+
+#reel-strip span {
+  height: clamp(2.2rem, 6vmin, 3.2rem);
+  line-height: clamp(2.2rem, 6vmin, 3.2rem);
+  font-size: clamp(1.4rem, 4vmin, 2rem);
+  font-weight: 700;
+  color: #ffd166;
+}
+
+/* --- mind map --- */
+
+#map {
+  position: relative;
+  width: min(85vmin, 32rem);
+  height: min(85vmin, 32rem);
+  flex: none;
+}
+
+.link {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 49.5%;
+  height: 2px;
+  background: #2c3766;
+  transform-origin: left center;
+}
+
+.link-nw {
+  transform: rotate(225deg);
+}
+
+.link-ne {
+  transform: rotate(315deg);
+}
+
+.link-sw {
+  transform: rotate(135deg);
+}
+
+.link-se {
+  transform: rotate(45deg);
+}
+
+#hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: clamp(4.5rem, 20vmin, 7rem);
+  height: clamp(4.5rem, 20vmin, 7rem);
+  border-radius: 50%;
+  background: #141a33;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.ring-track {
+  fill: none;
+  stroke: #2c3766;
+  stroke-width: 6;
+}
+
+#ring-progress {
+  fill: none;
+  stroke: #4ade80;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 282.6;
+  stroke-dashoffset: 0;
+  transition: stroke 0.2s;
+}
+
+#hub-letter {
+  font-size: clamp(1.8rem, 6vmin, 2.6rem);
+  font-weight: 800;
+}
+
+.node {
+  position: absolute;
+  width: clamp(6.5rem, 24vmin, 9rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.node-nw {
+  top: 8%;
+  left: 8%;
+  transform: translate(-50%, -50%);
+}
+
+.node-ne {
+  top: 8%;
+  left: 92%;
+  transform: translate(-50%, -50%);
+}
+
+.node-sw {
+  top: 92%;
+  left: 8%;
+  transform: translate(-50%, -50%);
+}
+
+.node-se {
+  top: 92%;
+  left: 92%;
+  transform: translate(-50%, -50%);
+}
+
+.node-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8891c9;
+}
+
+.node input {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  background: #141a33;
+  border: 2px solid #2c3766;
+  border-radius: 0.6rem;
+  color: #e8ecff;
+  font-size: clamp(0.9rem, 3vmin, 1.1rem);
+  padding: 0.5rem 0.4rem;
+}
+
+.node input:focus {
+  outline: none;
+  border-color: #4a5aa8;
+}
+
+.node.locked input {
+  border-color: #4ade80;
+  color: #4ade80;
+  opacity: 0.85;
+}
+
+.node.rejected input {
+  animation: shake 0.3s;
+  border-color: #f87171;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+
+/* --- loss overlay --- */
+
+#app.lost .node input,
+#app.lost #reel {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+#app.lost #hub-letter::after {
+  content: "";
+}
+
+.lost-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(10, 14, 30, 0.92);
+  padding: 1.5rem 2rem;
+  border-radius: 1rem;
+  cursor: pointer;
+  z-index: 2;
+}
+
+#app.lost .lost-banner {
+  display: flex;
+}
+
+.lost-banner .score {
+  font-size: clamp(2.2rem, 8vmin, 3.2rem);
+  font-weight: 800;
+  color: #ffd166;
+}
+
+/* --- refresh --- */
+
+#refresh {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: none;
+  background: #141a33;
+  color: #8891c9;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#refresh:hover {
+  color: #e8ecff;
+}
+
+#refresh svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: currentColor;
 }
