@@ -1,94 +1,115 @@
-// The mast's simulation core: pure and DOM-free, so spec/game.test.ts can
+// The tent's simulation core: pure and DOM-free, so spec/game.test.ts can
 // exercise the game's rules directly without a browser. main.ts is the only
 // thing that touches a canvas or a pointer event.
 
-export interface Brace {
-  /** 0 = anchored at the mast's base, 1 = anchored at its top. */
-  heightFraction: number;
+export type MaterialKind = "peg" | "rock";
+
+export interface Anchor {
+  /** Fixed position along the tent's base: -1 (far left) .. 1 (far right). */
+  side: number;
+  /** How loose/lifted this corner currently is. Exceeding TEAR_STRAIN rips it free. */
+  strain: number;
+  strainVelocity: number;
+  material: MaterialKind | null;
 }
 
-export interface MastState {
-  /** Radians. 0 = upright; sign is the lean direction. */
-  angle: number;
-  angularVelocity: number;
+export interface TentState {
   /** Seconds since this run started. */
   time: number;
-  braces: Brace[];
+  anchors: Anchor[];
+  stock: Record<MaterialKind, number>;
 }
 
-/** Exceeding this lean angle snaps the mast: the loss condition. */
-export const SNAP_ANGLE = 0.5;
+/** Fixed base points a tent is staked at, left to right. */
+const SIDES = [-1, -0.35, 0.35, 1];
 
-/** Braces available per run, shown as a row of dots. */
-export const MAX_BRACES = 4;
+/** Exceeding this strain on any one anchor tears it free: the loss condition. */
+export const TEAR_STRAIN = 0.5;
 
-/** Surviving to this many seconds without snapping is the win condition. */
-export const WIN_TIME = 35;
+/** Surviving to this many seconds without any anchor tearing is the win condition. */
+export const SURVIVE_TIME = 35;
+
+/** Fewer materials than anchors — same "budget forces a real decision" shape as before. */
+export const MATERIAL_STOCK: Record<MaterialKind, number> = { peg: 2, rock: 1 };
 
 const RAMP_TIME = 26;
-const WIND_MIN = 0.15;
-const WIND_MAX = 1.4;
-const BASE_STIFFNESS = 1.0;
+const STORM_MIN = 0.15;
+const STORM_MAX = 1.4;
+const BASE_STIFFNESS = 1.4;
 const DAMPING = 0.4;
-const BRACE_STIFFNESS = 2.5;
-/** How sharply a freshly-planted brace cuts the current sway on contact. */
-const BRACE_VELOCITY_CUT = 0.25;
+const PEG_STIFFNESS = 1.5;
+const ROCK_STIFFNESS = 4.0;
+/** How sharply a freshly-staked material cuts the anchor's current lift on contact. */
+const MATERIAL_VELOCITY_CUT = 0.25;
 
-export function initialState(): MastState {
-  return { angle: 0, angularVelocity: 0, time: 0, braces: [] };
-}
+/** How aligned an anchor's fixed side needs to be with the wind to feel full force. */
+const EXPOSURE_BASE = 0.15;
+const EXPOSURE_AMP = 0.85;
 
-/**
- * Wind torque at a point in time: ramps from WIND_MIN to WIND_MAX over
- * RAMP_TIME, then holds at the plateau, with a small deterministic gust
- * riding on top (a fixed function of time, not Math.random, so a run is
- * reproducible and testable).
- */
-export function windTorque(time: number): number {
-  const level =
-    time >= RAMP_TIME
-      ? WIND_MAX
-      : WIND_MIN + (WIND_MAX - WIND_MIN) * (time / RAMP_TIME);
-  const gust = level * (0.15 * Math.sin(time * 1.3) + 0.08 * Math.sin(time * 3.7 + 1));
-  return level + gust;
-}
+/** Wind direction cycle: how often the storm's lean swings fully side to side. */
+const WIND_DIR_FREQ = 0.35;
 
-function stiffness(braces: Brace[]): number {
-  return braces.reduce(
-    (total, brace) => total + BRACE_STIFFNESS * brace.heightFraction ** 2,
-    BASE_STIFFNESS,
-  );
-}
-
-/** Advances the simulation by dt seconds (semi-implicit Euler). */
-export function step(state: MastState, dt: number): MastState {
-  const torque = windTorque(state.time);
-  const k = stiffness(state.braces);
-  const angularAcceleration =
-    torque - k * state.angle - DAMPING * state.angularVelocity;
-  const angularVelocity = state.angularVelocity + angularAcceleration * dt;
-  const angle = state.angle + angularVelocity * dt;
-  return { angle, angularVelocity, time: state.time + dt, braces: state.braces };
-}
-
-/**
- * Plants a brace at the given height along the mast (0..1). Cuts the
- * current sway sharply, the taut line catching the mast, on top of adding
- * lasting stiffness — a brace placed higher up counters more torque.
- */
-export function addBrace(state: MastState, heightFraction: number): MastState {
-  const clamped = Math.min(1, Math.max(0, heightFraction));
+export function initialState(): TentState {
   return {
-    ...state,
-    angularVelocity: state.angularVelocity * BRACE_VELOCITY_CUT,
-    braces: [...state.braces, { heightFraction: clamped }],
+    time: 0,
+    anchors: SIDES.map((side) => ({ side, strain: 0, strainVelocity: 0, material: null })),
+    stock: { ...MATERIAL_STOCK },
   };
 }
 
-export function hasSnapped(state: MastState): boolean {
-  return Math.abs(state.angle) > SNAP_ANGLE;
+export function stormMagnitude(time: number): number {
+  return time >= RAMP_TIME
+    ? STORM_MAX
+    : STORM_MIN + (STORM_MAX - STORM_MIN) * (time / RAMP_TIME);
 }
 
-export function hasWon(state: MastState): boolean {
-  return state.time >= WIN_TIME && !hasSnapped(state);
+/** -1 (leaning hard left) .. 1 (leaning hard right); deterministic, not random. */
+export function windDirection(time: number): number {
+  return Math.sin(time * WIND_DIR_FREQ);
+}
+
+function exposure(anchor: Anchor, time: number): number {
+  return EXPOSURE_BASE + EXPOSURE_AMP * Math.max(0, anchor.side * windDirection(time));
+}
+
+function stiffness(anchor: Anchor): number {
+  if (anchor.material === "peg") return BASE_STIFFNESS + PEG_STIFFNESS;
+  if (anchor.material === "rock") return BASE_STIFFNESS + ROCK_STIFFNESS;
+  return BASE_STIFFNESS;
+}
+
+export function step(state: TentState, dt: number): TentState {
+  const magnitude = stormMagnitude(state.time);
+  const anchors = state.anchors.map((anchor) => {
+    const torque = magnitude * exposure(anchor, state.time);
+    const k = stiffness(anchor);
+    const strainAcceleration = torque - k * anchor.strain - DAMPING * anchor.strainVelocity;
+    const strainVelocity = anchor.strainVelocity + strainAcceleration * dt;
+    const strain = anchor.strain + strainVelocity * dt;
+    return { ...anchor, strain, strainVelocity };
+  });
+  return { ...state, anchors, time: state.time + dt };
+}
+
+export function placeMaterial(
+  state: TentState,
+  anchorIndex: number,
+  material: MaterialKind,
+): TentState {
+  const anchor = state.anchors[anchorIndex];
+  if (!anchor || anchor.material !== null || state.stock[material] <= 0) return state;
+  const anchors = state.anchors.map((a, i) =>
+    i === anchorIndex
+      ? { ...a, material, strainVelocity: a.strainVelocity * MATERIAL_VELOCITY_CUT }
+      : a,
+  );
+  return { ...state, anchors, stock: { ...state.stock, [material]: state.stock[material] - 1 } };
+}
+
+export function hasCollapsed(state: TentState): boolean {
+  return state.anchors.some((a) => Math.abs(a.strain) > TEAR_STRAIN);
+}
+
+export function hasSurvived(state: TentState): boolean {
+  return state.time >= SURVIVE_TIME && !hasCollapsed(state);
 }
