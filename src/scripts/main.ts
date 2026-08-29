@@ -43,13 +43,22 @@ function mastLength() {
   return Math.min(height * 0.6, 600);
 }
 
-type Phase = "playing" | "snapped" | "won";
+type Phase = "practice" | "playing" | "snapped" | "won";
+
+/**
+ * How long a first-time player gets to try the mechanic with no way to
+ * lose, before the real escalating run begins. Ends early the moment they
+ * place a brace on their own. Not a spec rule, so it lives here rather than
+ * in physics.ts: it's paced by wall-clock feel, not by a testable outcome.
+ */
+const PRACTICE_DURATION = 6;
 
 let state: MastState = initialState();
-let phase: Phase = "playing";
+let phase: Phase = "practice";
 let phaseChangedAt = 0;
 let now = 0;
 let shakeUntil = 0;
+let flashUntil = 0;
 
 function pointOnMast(fraction: number, s: MastState) {
   const len = mastLength() * fraction;
@@ -75,6 +84,26 @@ function playSnapThud() {
     osc.stop(audioCtx.currentTime + 0.4);
   } catch {
     // audio is a nice-to-have; a browser that blocks it shouldn't break the game
+  }
+}
+
+// A short rising chime marking the practice window ending and the real,
+// losable run beginning — pairs with the visual flash for the same moment.
+function playStartChime() {
+  try {
+    audioCtx ??= new AudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(640, audioCtx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.22);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.22);
+  } catch {
+    // same rationale as playSnapThud
   }
 }
 
@@ -121,8 +150,9 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  if (phase !== "playing") {
-    // any click on a finished run starts a fresh one
+  if (phase === "snapped" || phase === "won") {
+    // any click on a finished run starts a fresh one — straight into the
+    // real run, since this player has already had their practice window
     state = initialState();
     phase = "playing";
     phaseChangedAt = now;
@@ -149,7 +179,7 @@ canvas.addEventListener("pointerup", () => {
   if (!drag.active) return;
   drag.active = false;
   if (
-    phase === "playing" &&
+    (phase === "playing" || phase === "practice") &&
     drag.grabFraction !== null &&
     state.braces.length < MAX_BRACES &&
     Math.abs(drag.y - groundY()) < 60
@@ -176,6 +206,7 @@ function draw() {
   drawBraces();
   drawMast();
   drawBraceBudget();
+  drawFlash();
 
   ctx!.restore();
 }
@@ -190,6 +221,17 @@ function lerpColor(a: [number, number, number], b: [number, number, number], t: 
 }
 
 function drawSky() {
+  if (phase === "practice") {
+    // A calmer dusk tint than the real run's night sky — the only signal
+    // (wordless) that nothing here can actually go wrong yet.
+    const grad = ctx!.createLinearGradient(0, 0, 0, groundY());
+    grad.addColorStop(0, "rgb(48, 52, 82)");
+    grad.addColorStop(1, "rgb(80, 68, 96)");
+    ctx!.fillStyle = grad;
+    ctx!.fillRect(0, 0, width, groundY());
+    return;
+  }
+
   const t = skyProgress();
   const nightTop: [number, number, number] = [10, 14, 30];
   const nightBottom: [number, number, number] = [30, 34, 55];
@@ -201,6 +243,15 @@ function drawSky() {
   grad.addColorStop(1, lerpColor(nightBottom, dawnBottom, t));
   ctx!.fillStyle = grad;
   ctx!.fillRect(0, 0, width, groundY());
+}
+
+// A brief white flash marking the exact instant practice ends and the real,
+// losable run takes over — paired with playStartChime().
+function drawFlash() {
+  if (now >= flashUntil) return;
+  const alpha = Math.max(0, (flashUntil - now) / 0.25) * 0.5;
+  ctx!.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx!.fillRect(0, 0, width, height);
 }
 
 function drawGround() {
@@ -224,7 +275,8 @@ function ensureParticles() {
 }
 function drawWindParticles() {
   ensureParticles();
-  const wind = phase === "playing" ? windTorque(state.time) : 0.15;
+  const wind =
+    phase === "playing" || phase === "practice" ? windTorque(state.time) : 0.15;
   ctx!.strokeStyle = "rgba(255,255,255,0.25)";
   ctx!.lineWidth = 1;
   for (const p of particles) {
@@ -313,7 +365,19 @@ function frame(t: number) {
   last = t;
   now = t / 1000;
 
-  if (phase === "playing") {
+  if (phase === "practice") {
+    state = step(state, dt);
+    // never allowed to snap here — a safe window to try the mechanic —
+    // and it ends the moment the player braces on their own, or after a
+    // fixed window if they haven't
+    if (state.braces.length > 0 || state.time >= PRACTICE_DURATION) {
+      state = initialState();
+      phase = "playing";
+      phaseChangedAt = now;
+      flashUntil = now + 0.25;
+      playStartChime();
+    }
+  } else if (phase === "playing") {
     state = step(state, dt);
     if (hasSnapped(state)) {
       phase = "snapped";
