@@ -117,6 +117,12 @@ interface DragState {
 }
 const drag: DragState = { active: false, grabFraction: null, x: 0, y: 0 };
 
+// A drag that misses the landing zone still gets a visible response: the
+// attempted line fades out instead of just silently vanishing.
+let failedDrop: { anchor: { x: number; y: number }; end: { x: number; y: number } } | null =
+  null;
+let failedDropUntil = 0;
+
 function distanceToMast(x: number, y: number, s: MastState): number {
   // sample the mast as a short polyline and take the nearest distance
   let best = Infinity;
@@ -169,22 +175,41 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 
 canvas.addEventListener("pointermove", (e) => {
-  if (!drag.active) return;
   const rect = canvas.getBoundingClientRect();
-  drag.x = e.clientX - rect.left;
-  drag.y = e.clientY - rect.top;
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  if (drag.active) {
+    drag.x = x;
+    drag.y = y;
+    return;
+  }
+
+  // hovering near the mast (not yet dragging) still gets a cursor cue —
+  // the only pre-click signal that it's the thing to grab
+  const nearMast = (phase === "playing" || phase === "practice") && distanceToMast(x, y, state) < 40;
+  canvas.style.cursor = nearMast ? "grab" : "pointer";
 });
 
 canvas.addEventListener("pointerup", () => {
   if (!drag.active) return;
   drag.active = false;
+  canvas.style.cursor = "pointer";
+
+  const anchor =
+    drag.grabFraction !== null ? pointOnMast(drag.grabFraction, state) : { x: drag.x, y: drag.y };
+
   if (
     (phase === "playing" || phase === "practice") &&
     drag.grabFraction !== null &&
     state.braces.length < MAX_BRACES &&
-    Math.abs(drag.y - groundY()) < 60
+    Math.abs(drag.y - groundY()) < 90
   ) {
     state = addBrace(state, drag.grabFraction);
+  } else {
+    // the drag didn't land — show it fading instead of just vanishing
+    failedDrop = { anchor, end: { x: drag.x, y: drag.y } };
+    failedDropUntil = now + 0.35;
   }
   drag.grabFraction = null;
 });
@@ -205,6 +230,8 @@ function draw() {
   drawGround();
   drawBraces();
   drawMast();
+  drawActiveDrag();
+  drawFailedDrop();
   drawBraceBudget();
   drawFlash();
 
@@ -342,6 +369,42 @@ function drawMast() {
     ctx!.lineTo(top.x, top.y);
     ctx!.stroke();
   }
+}
+
+// A dragging player sees the attempted brace line immediately, before it's
+// committed — the thing that was silently missing before this fix. Colour
+// flips to a warning red once the release point is outside the landing zone.
+function drawActiveDrag() {
+  if (!drag.active || drag.grabFraction === null) return;
+  const anchor = pointOnMast(drag.grabFraction, state);
+  const valid = Math.abs(drag.y - groundY()) < 90;
+  ctx!.strokeStyle = valid ? "rgba(255,235,205,0.95)" : "rgba(255,120,120,0.85)";
+  ctx!.lineWidth = 3;
+  ctx!.setLineDash([6, 6]);
+  ctx!.beginPath();
+  ctx!.moveTo(anchor.x, anchor.y);
+  ctx!.lineTo(drag.x, drag.y);
+  ctx!.stroke();
+  ctx!.setLineDash([]);
+  ctx!.beginPath();
+  ctx!.arc(drag.x, drag.y, 6, 0, Math.PI * 2);
+  ctx!.fillStyle = valid ? "rgba(255,235,205,0.95)" : "rgba(255,120,120,0.85)";
+  ctx!.fill();
+}
+
+// A drop that missed the landing zone still leaves a brief mark: the
+// attempted line fades out over failedDropUntil instead of vanishing outright.
+function drawFailedDrop() {
+  if (!failedDrop || now >= failedDropUntil) return;
+  const alpha = Math.max(0, (failedDropUntil - now) / 0.35) * 0.8;
+  ctx!.strokeStyle = `rgba(255,120,120,${alpha})`;
+  ctx!.lineWidth = 3;
+  ctx!.setLineDash([6, 6]);
+  ctx!.beginPath();
+  ctx!.moveTo(failedDrop.anchor.x, failedDrop.anchor.y);
+  ctx!.lineTo(failedDrop.end.x, failedDrop.end.y);
+  ctx!.stroke();
+  ctx!.setLineDash([]);
 }
 
 function drawBraceBudget() {
