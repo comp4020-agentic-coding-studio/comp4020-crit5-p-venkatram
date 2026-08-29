@@ -306,7 +306,14 @@ function focusNext(gs: GameState): void {
 
 function attemptSubmit(category: Category, input: HTMLInputElement): void {
   const value = input.value.trim();
-  if (!value || state.phase !== "active") return;
+  // A just-accepted word disables its input (see render, above), and a
+  // disabled input is forced to blur — which fires this same handler again
+  // a frame later. Without this guard that second call always finds the
+  // category already locked and flashes a spurious rejection on the word
+  // that was just accepted.
+  if (!value || state.phase !== "active" || state.entries[category] !== null) {
+    return;
+  }
   const result = submitWord(state, category, value);
   if (result.accepted) {
     state = result.state;
