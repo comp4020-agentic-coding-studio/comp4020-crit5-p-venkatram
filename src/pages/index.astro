@@ -6,7 +6,7 @@ import "../styles/styles.css";
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Name, Place, Animal, Thing</title>
+    <title>Letter Head</title>
     <meta
       name="description"
       content="A reel of letters and a mind map of four word slots that race a closing ring."
@@ -19,11 +19,11 @@ import "../styles/styles.css";
   <body>
     <header class="visually-hidden">
       <nav aria-label="Primary">
-        <a href="./">Name, Place, Animal, Thing</a>
+        <a href="./">Letter Head</a>
       </nav>
     </header>
     <main>
-      <h1 class="visually-hidden">Name, Place, Animal, Thing</h1>
+      <h1 class="visually-hidden">Letter Head</h1>
       <div class="layout">
         <div id="app">
           <div id="map">
@@ -79,6 +79,14 @@ import "../styles/styles.css";
     </main>
 
     <div id="score-badge"><span id="score-live">0</span></div>
+
+    <div id="brand" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="11" fill="#1c2650" stroke="#4a5aa8" stroke-width="1.5"></circle>
+        <text x="12" y="16.5" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="12" fill="#ffd166">L</text>
+      </svg>
+      <span>Letter Head</span>
+    </div>
 
     <button id="end-game" type="button" aria-label="End">
       <svg viewBox="0 0 24 24" aria-hidden="true">
