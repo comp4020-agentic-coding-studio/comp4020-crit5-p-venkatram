@@ -2,73 +2,67 @@
 
 ## What I built
 
-**Brace the Mast**: a single wooden mast, anchored in sand, swaying under wind
-that ramps up over the run. The only verb is click-drag from the mast to the
-ground, which plants a brace and instantly damps the sway; a brace higher up
-counters more torque, so a limited four-brace budget forces a real decision
-about when and how high to spend each one. Lean too far and the mast snaps
-(loss); hold it through the full escalation window and the sky brightens to
-dawn (win). No text, no instructions, on screen or off — the only affordance
-is that the mast is the one thing moving.
+**Bolt the Engine**: an engine block sitting on a garage test rig, fastened
+down at four mounts, shaking harder as the throttle ramps up over the run —
+and drifting, so which mount is under the most strain keeps changing. The
+only verb is click-drag from a small parts palette (plentiful bolts, one
+scarce weld) onto a mount, which fastens it and instantly damps its shake; a
+weld stiffens a mount more than a bolt does, and there are fewer materials
+than mounts, so at least one always goes unfastened — a real decision about
+where to spend the scarce weld. Strip any one mount past its strain limit and
+the engine tips off the rig (loss); survive the full test window with every
+mount intact and the rig settles calm (win). No text, no instructions, on
+screen or off — the only affordances are the mounts' own colour and jitter,
+live every frame, telling you which one is in trouble right now.
 
 ## The moments that mattered
 
-1. **Tuning by simulation, not by guessing and reloading.** A physics-feel
-   game like this lives or dies on its constants (wind ramp, brace strength,
-   snap angle), and tweaking them by playing one run at a time is slow and
-   noisy — a single run only samples one bracing strategy. Instead of
-   guessing values and eyeballing the result in the browser, I wrote a
-   throwaway Node script that ran the same simulation headlessly against
-   several bracing strategies (unbraced, reactive-low, front-loaded-high) and
-   printed when each one snapped or survived, before any constant landed in
-   the real module. That's how `WIN_TIME`, `RAMP_TIME`, `BRACE_STIFFNESS` and
-   `SNAP_ANGLE` in
-   [`9348643`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/9348643)
-   arrived already producing the intended curve: an unbraced mast snaps in
-   ~7s (obvious fast), two well-placed high braces reliably win, four
-   low-placed braces reliably lose, and four mid-height braces produce a
-   narrow near-miss loss — a discoverable "oh, height matters" moment. The
-   scratch tuning script itself was never committed; the constants and the
-   tests that pin them (`spec/game.test.ts` in the same commit) are the
-   record of it.
+1. **Renaming a tested mechanic without retesting the mechanic.** This game
+   went through two full reskins before landing here (a mast, then a tent,
+   then this rig), and each time the physics, the difficulty curve, and the
+   drag-and-fasten interaction stayed identical — only names and rendering
+   changed. The safety net was `spec/game.test.ts`: 26 tests, same count and
+   same shape before and after each rename, because the tests assert on the
+   *rule* (a mount stripping past its threshold, a weld out-stiffening a
+   bolt, a fastened mount's shake cutting instantly) rather than on names. If
+   a rename had silently changed behaviour, the tests would have caught it
+   immediately rather than requiring a fresh round of manual verification. Landed
+   in
+   [`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
 
-2. **Caught my own spec violation before it shipped.** The spec's central
-   constraint is that a stranger gets zero instructions, on screen or off —
-   which includes screen-reader text. My first draft of the canvas's
-   `aria-label` read "...drag from the mast to the ground to brace it",
-   which is exactly the instruction the game isn't allowed to give. I caught
-   this on review before ever running the page, and rewrote it to a purely
-   descriptive label ("A tall wooden mast leaning in the wind on a sandy
-   shore") in
-   [`ef2c961`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/ef2c961).
-   The nav and `<h1>` stay in the DOM in the same commit — the shipped
-   invariants require a landmark and one heading — but are visually hidden,
-   so the accessibility/SEO requirements and the "no tutorial" requirement
-   don't fight each other.
+2. **The one change that came from playing it, not reading it.** Every rule
+   and every constant passed `pnpm check` and a battery of simulated bracing
+   strategies before I ever looked at a rendered frame. But the mount layout
+   scaled the engine's width purely off viewport *height*
+   (`Math.min(height * 0.65, 640)`), with no cap tied to the available
+   *width*. At the phone marking viewport (390×844) that pushed the two
+   outermost mounts — the two the difficulty curve depends on being seen and
+   reached, since they're the most exposed to the drifting throttle — off
+   the edge of the canvas entirely. No unit test or type check could have
+   caught this; it only showed up in a headless screenshot of the actual
+   built page at the actual marking size. Fixed by capping the span at
+   `(width - paletteWidth()) * 0.85` as well, then re-verified with fresh
+   screenshots at both marking viewports confirming all four mounts are
+   visible and a drag onto an outer mount now lands. Also in
+   [`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
 
-3. **The one change that came from playing it, not reading it.** Everything
-   above was validated by simulation and by unit tests, which is exactly the
-   kind of check that can miss something purely visual. Headless Playwright
-   passes at the course's actual marking viewports (1920x1080 desktop,
-   390x844 phone — from the assessment page, not assumed) showed the mast
-   rendering fine but reading as a thin tick mark lost in a lot of empty sky
-   at 1920x1080, because its length was capped at a flat 420px chosen while
-   testing at a much smaller window. No test could have caught this — it's
-   only visible once you actually load the built page at the real viewport
-   size. Fixed in
-   [`922ac0d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/922ac0d)
-   by scaling the mast's length with viewport height (capped at 600) instead
-   of a flat number, then re-verified with another headless pass at both
-   marking viewports to confirm drag-to-brace still worked and nothing broke
-   on the narrow phone layout.
+3. **Verifying an assumption before calling it a bug.** A screenshot pass
+   showed a weld placed during the wordless practice window seemingly vanish
+   moments later, with no rendering error to explain it. Rather than patch
+   the render code, I checked the state transition first: placing any
+   material during practice ends practice and resets the run to
+   `initialState()`, on purpose, so a practice placement never carries into
+   the scored run. Confirming that against the code before touching anything
+   saved a wasted fix for behaviour that was already correct.
 
 ## Verification
 
-`pnpm check` (typecheck, build, and all three test files — the shipped
-invariants plus `spec/game.test.ts`) passes at
-[`922ac0d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/922ac0d).
+`pnpm check` (typecheck, build, and all three test files) passes at
+[`b16ff9d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/b16ff9d).
 Beyond the automated checks, I drove the built game with headless Chromium
-(outside this repo, not a dependency of it) to confirm, screenshot-by-screenshot:
-an unbraced mast snapping and offering a click-to-restart, a bracing session
-recovering from a near-snap, and a front-loaded bracing strategy holding
-through to the dawn win state — at both of the course's marking viewports.
+(outside this repo, not a dependency of it) at both of the course's marking
+viewports (1920×1080 desktop, 390×844 phone) to confirm, screenshot by
+screenshot: the wordless practice window resetting into the real run, the
+live drag line and mount colour/jitter feedback during an actual drag, a
+weld landing and visibly protecting a mount, and an under-fastened engine
+tipping off the rig — with all four mounts reachable on both viewports.
