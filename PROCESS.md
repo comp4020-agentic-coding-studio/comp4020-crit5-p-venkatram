@@ -1,70 +1,74 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
-A reading-guide to how the work came together --- a map to your process, not an
-essay about it. Markers read this file and follow its citations; they don't
-trawl the repo for evidence you didn't point at, so if a moment mattered, cite
-it.
-
-This file is the shape; the course site's
-[assessment page](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#what-you-submit)
-is the requirement, and its
-[word counts](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#word-counts)
-cover every deliverable.
-
 ## What I built
 
-One paragraph: the thing, and the idea behind it.
+**Brace the Mast**: a single wooden mast, anchored in sand, swaying under wind
+that ramps up over the run. The only verb is click-drag from the mast to the
+ground, which plants a brace and instantly damps the sway; a brace higher up
+counters more torque, so a limited four-brace budget forces a real decision
+about when and how high to spend each one. Lean too far and the mast snaps
+(loss); hold it through the full escalation window and the sky brightens to
+dawn (win). No text, no instructions, on screen or off — the only affordance
+is that the mast is the one thing moving.
 
 ## The moments that mattered
 
-Three or four for an assignment; fewer is fine for a weekly prototype. Keep the
-list short so each moment has room to do all four jobs:
+1. **Tuning by simulation, not by guessing and reloading.** A physics-feel
+   game like this lives or dies on its constants (wind ramp, brace strength,
+   snap angle), and tweaking them by playing one run at a time is slow and
+   noisy — a single run only samples one bracing strategy. Instead of
+   guessing values and eyeballing the result in the browser, I wrote a
+   throwaway Node script that ran the same simulation headlessly against
+   several bracing strategies (unbraced, reactive-low, front-loaded-high) and
+   printed when each one snapped or survived, before any constant landed in
+   the real module. That's how `WIN_TIME`, `RAMP_TIME`, `BRACE_STIFFNESS` and
+   `SNAP_ANGLE` in
+   [`9348643`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/9348643)
+   arrived already producing the intended curve: an unbraced mast snaps in
+   ~7s (obvious fast), two well-placed high braces reliably win, four
+   low-placed braces reliably lose, and four mid-height braces produce a
+   narrow near-miss loss — a discoverable "oh, height matters" moment. The
+   scratch tuning script itself was never committed; the constants and the
+   tests that pin them (`spec/game.test.ts` in the same commit) are the
+   record of it.
 
-1. **what happened** --- the problem, or the thing that went wrong
-2. **what you did instead of the obvious thing** --- the call you made, and why
-   it beat the obvious one
-3. **how you knew it was right** --- the check you ran, the viewport you looked
-   at, what you read before accepting the diff
-4. **the citation** --- a commit or commit range, a `CLAUDE.md` change, a check
-   that went from red to green, a prompt paired with the commit it produced
+2. **Caught my own spec violation before it shipped.** The spec's central
+   constraint is that a stranger gets zero instructions, on screen or off —
+   which includes screen-reader text. My first draft of the canvas's
+   `aria-label` read "...drag from the mast to the ground to brace it",
+   which is exactly the instruction the game isn't allowed to give. I caught
+   this on review before ever running the page, and rewrote it to a purely
+   descriptive label ("A tall wooden mast leaning in the wind on a sandy
+   shore") in
+   [`ef2c961`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/ef2c961).
+   The nav and `<h1>` stay in the DOM in the same commit — the shipped
+   invariants require a landmark and one heading — but are visually hidden,
+   so the accessibility/SEO requirements and the "no tutorial" requirement
+   don't fight each other.
 
-Jobs 2 and 3 are the ones the repo can't tell a reader on its own, so they're
-where the marks are. The strongest moments are the ones where a correction
-landed in the **harness** --- the standards and checks your work has to satisfy
---- rather than in a retry: a rule added to `CLAUDE.md`, a check wired up, an
-attempt thrown away. Retrying until it passes is the routine case, and changing
-what the work runs against is the skilled one.
+3. **The one change that came from playing it, not reading it.** Everything
+   above was validated by simulation and by unit tests, which is exactly the
+   kind of check that can miss something purely visual. Headless Playwright
+   passes at the course's actual marking viewports (1920x1080 desktop,
+   390x844 phone — from the assessment page, not assumed) showed the mast
+   rendering fine but reading as a thin tick mark lost in a lot of empty sky
+   at 1920x1080, because its length was capped at a flat 420px chosen while
+   testing at a much smaller window. No test could have caught this — it's
+   only visible once you actually load the built page at the real viewport
+   size. Fixed in
+   [`922ac0d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/922ac0d)
+   by scaling the mast's length with viewport height (capped at 600) instead
+   of a flat number, then re-verified with another headless pass at both
+   marking viewports to confirm drag-to-brace still worked and nothing broke
+   on the narrow phone layout.
 
-Cite each moment as a link whose text is the commit hash or range and whose
-target is this repo's commit or compare URL, so a reader clicks straight to the
-evidence:
+## Verification
 
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
-
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
-
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the verification better than a
-sentence does. Commit the file to this repo and link it with a **relative**
-path, which is what makes it render on GitHub: `![alt text](docs/before.png)`.
-Images don't count towards the word count and don't replace the citation.
-
-## Before you ship
-
-`pnpm check:evidence` verifies your citations resolve to real commits, that a
-reflection entry the marker reads is in `reflections/`, and that your
-`CLAUDE.md` is there --- before a marker ever opens the file. It checks that
-your map is traceable, not that it is good: the marker judges whether your
-small, deliberately chosen set of moments shows real judgement and reflection. A
-green check is not a substitute for that curation.
-
-Images aren't checked: unlike a citation whose SHA doesn't resolve, a broken
-image is visible the moment this file is rendered on GitHub.
+`pnpm check` (typecheck, build, and all three test files — the shipped
+invariants plus `spec/game.test.ts`) passes at
+[`922ac0d`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit5-p-venkatram/commit/922ac0d).
+Beyond the automated checks, I drove the built game with headless Chromium
+(outside this repo, not a dependency of it) to confirm, screenshot-by-screenshot:
+an unbraced mast snapping and offering a click-to-restart, a bracing session
+recovering from a near-snap, and a front-loaded bracing strategy holding
+through to the dawn win state — at both of the course's marking viewports.
