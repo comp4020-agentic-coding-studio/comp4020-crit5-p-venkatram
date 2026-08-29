@@ -1,4 +1,5 @@
 import { isKnownAnimal } from "./animals";
+import { isColor } from "./colors";
 import { isDictionaryWord } from "./dictionary";
 import { isKnownPlace } from "./places";
 
@@ -102,13 +103,15 @@ export function isValidWord(
   }
   // "Thing" has no category-specific list of its own, so a real dictionary
   // is what keeps it from being any arbitrary string — plus it's explicitly
-  // not a name, a place, or an animal: reject a "thing" that just reuses
-  // this round's own name/place/animal answer, or that happens to be a
-  // recognised place name.
+  // not a name, a place, an animal, or a color (a color passes the
+  // dictionary check but isn't an object): reject a "thing" that just
+  // reuses this round's own name/place/animal answer, or that happens to
+  // be a recognised place name or color.
   if (
     category === "thing" &&
     (!isDictionaryWord(normalized) ||
       isKnownPlace(normalized) ||
+      isColor(normalized) ||
       normalized === state.entries.name ||
       normalized === state.entries.place ||
       normalized === state.entries.animal)

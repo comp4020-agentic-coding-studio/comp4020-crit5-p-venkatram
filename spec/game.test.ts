@@ -155,6 +155,12 @@ describe("word validation", () => {
     const result = submitWord(state, "thing", "Argentina");
     expect(result.accepted).toBe(false);
   });
+
+  it("rejects a thing that is actually a color", () => {
+    const state = activeState("Y");
+    const result = submitWord(state, "thing", "Yellow");
+    expect(result.accepted).toBe(false);
+  });
 });
 
 describe("session bookkeeping", () => {

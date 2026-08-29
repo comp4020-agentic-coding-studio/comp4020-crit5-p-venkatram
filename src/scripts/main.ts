@@ -404,9 +404,8 @@ function frame(now: number): void {
   }
 
   if (state.phase === "active") {
-    const wasActive = true;
     state = tick(state, dt);
-    if (wasActive && hasLost(state)) {
+    if (hasLost(state)) {
       playLoss();
     }
     updateRing(state);
@@ -414,7 +413,11 @@ function frame(now: number): void {
       save(state);
       lastSave = now;
     }
-    if (hasLost(state)) render(state);
+    // The clock can end a round two ways: a loss, or a clean near-miss
+    // completion (3 of 4 filled). Either way phase leaves "active", and the
+    // hub/inputs/history all need to catch up — not just on a loss, or the
+    // hub stays disabled forever after a near-miss completion.
+    if (state.phase !== "active") render(state);
   }
 }
 
