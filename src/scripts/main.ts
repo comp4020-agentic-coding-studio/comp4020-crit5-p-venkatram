@@ -1,14 +1,15 @@
 import {
-  addBrace,
-  hasSnapped,
-  hasWon,
+  hasCollapsed,
+  hasSurvived,
   initialState,
+  placeMaterial,
   step,
-  windTorque,
-  MAX_BRACES,
-  SNAP_ANGLE,
-  WIN_TIME,
-  type MastState,
+  stormMagnitude,
+  MATERIAL_STOCK,
+  SURVIVE_TIME,
+  TEAR_STRAIN,
+  type MaterialKind,
+  type TentState,
 } from "./physics";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#scene");
@@ -29,45 +30,50 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// --- layout: the mast pivots at groundY, on the vertical centre line ---
+// --- layout: the tent's four anchors sit along the base, palette to the left ---
 function groundY() {
   return height * 0.82;
 }
-function mastX() {
-  return width * 0.5;
+function paletteWidth() {
+  return Math.min(width * 0.16, 140);
 }
-function mastLength() {
-  // Height-relative so the mast reads as a proper structure rather than a
-  // tick mark on a large desktop viewport (found by playing it at the real
-  // 1920x1080 marking viewport, not visible when testing at a smaller window).
-  return Math.min(height * 0.6, 600);
+function tentSpan() {
+  // Height-relative so the tent reads as a real structure on a large desktop
+  // viewport rather than a tiny triangle (the mast had the same problem,
+  // found by playing the build at the real 1920x1080 marking viewport).
+  return Math.min(height * 0.65, 640);
+}
+function tentCenterX() {
+  return paletteWidth() + (width - paletteWidth()) * 0.55;
+}
+function peakY() {
+  return groundY() - tentSpan() * 0.42;
 }
 
-type Phase = "practice" | "playing" | "snapped" | "won";
+const ANCHOR_ORDER: number[] = [0, 1, 2, 3];
+
+function anchorX(side: number) {
+  return tentCenterX() + side * tentSpan() * 0.5;
+}
+
+type Phase = "practice" | "playing" | "collapsed" | "survived";
 
 /**
  * How long a first-time player gets to try the mechanic with no way to
- * lose, before the real escalating run begins. Ends early the moment they
- * place a brace on their own. Not a spec rule, so it lives here rather than
- * in physics.ts: it's paced by wall-clock feel, not by a testable outcome.
+ * lose, before the real escalating storm begins. Ends early the moment they
+ * place a material on their own. Not a spec rule, so it lives here rather
+ * than in physics.ts: it's paced by wall-clock feel, not by a testable outcome.
  */
 const PRACTICE_DURATION = 6;
 
-let state: MastState = initialState();
+let state: TentState = initialState();
 let phase: Phase = "practice";
 let phaseChangedAt = 0;
 let now = 0;
 let shakeUntil = 0;
 let flashUntil = 0;
 
-function pointOnMast(fraction: number, s: MastState) {
-  const len = mastLength() * fraction;
-  const x = mastX() + Math.sin(s.angle) * len;
-  const y = groundY() - Math.cos(s.angle) * len;
-  return { x, y };
-}
-
-// --- audio: a single generated thud on snap, no asset files ---
+// --- audio: generated tones only, no asset files ---
 let audioCtx: AudioContext | null = null;
 function playSnapThud() {
   try {
@@ -107,48 +113,71 @@ function playStartChime() {
   }
 }
 
-// --- input: drag from the mast to the ground plants a brace ---
+// A soft, low click when a material successfully lands on an anchor.
+function playPlaceClick() {
+  try {
+    audioCtx ??= new AudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  } catch {
+    // same rationale as playSnapThud
+  }
+}
+
+// --- input: drag a material from the palette onto an anchor to stake it ---
 interface DragState {
   active: boolean;
-  /** Height along the mast (0..1) where the drag grabbed it, if it did. */
-  grabFraction: number | null;
+  material: MaterialKind | null;
+  originX: number;
+  originY: number;
   x: number;
   y: number;
 }
-const drag: DragState = { active: false, grabFraction: null, x: 0, y: 0 };
+const drag: DragState = { active: false, material: null, originX: 0, originY: 0, x: 0, y: 0 };
 
-// A drag that misses the landing zone still gets a visible response: the
+// A drop that misses every anchor still gets a visible response: the
 // attempted line fades out instead of just silently vanishing.
 let failedDrop: { anchor: { x: number; y: number }; end: { x: number; y: number } } | null =
   null;
 let failedDropUntil = 0;
 
-function distanceToMast(x: number, y: number, s: MastState): number {
-  // sample the mast as a short polyline and take the nearest distance
-  let best = Infinity;
-  const steps = 12;
-  for (let i = 0; i <= steps; i++) {
-    const p = pointOnMast(i / steps, s);
-    const d = Math.hypot(p.x - x, p.y - y);
-    if (d < best) best = d;
-  }
-  return best;
+function paletteSlotY(material: MaterialKind) {
+  return material === "rock" ? groundY() - 160 : groundY() - 60;
+}
+function paletteSlotX() {
+  return paletteWidth() * 0.5;
 }
 
-function heightFractionNear(x: number, y: number, s: MastState): number {
+function paletteHit(x: number, y: number): MaterialKind | null {
+  for (const material of ["peg", "rock"] as MaterialKind[]) {
+    if (state.stock[material] <= 0) continue;
+    const sx = paletteSlotX();
+    const sy = paletteSlotY(material);
+    if (Math.hypot(x - sx, y - sy) < 30) return material;
+  }
+  return null;
+}
+
+/** Nearest anchor index to a point, and how far away it is. */
+function nearestAnchor(x: number, y: number): { index: number; distance: number } {
   let best = 0;
   let bestDist = Infinity;
-  const steps = 24;
-  for (let i = 0; i <= steps; i++) {
-    const f = i / steps;
-    const p = pointOnMast(f, s);
-    const d = Math.hypot(p.x - x, p.y - y);
+  for (const i of ANCHOR_ORDER) {
+    const ax = anchorX(state.anchors[i].side);
+    const d = Math.hypot(ax - x, groundY() - y);
     if (d < bestDist) {
       bestDist = d;
-      best = f;
+      best = i;
     }
   }
-  return best;
+  return { index: best, distance: bestDist };
 }
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -156,7 +185,7 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  if (phase === "snapped" || phase === "won") {
+  if (phase === "collapsed" || phase === "survived") {
     // any click on a finished run starts a fresh one — straight into the
     // real run, since this player has already had their practice window
     state = initialState();
@@ -165,9 +194,12 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
 
-  if (distanceToMast(x, y, state) < 40) {
+  const material = paletteHit(x, y);
+  if (material) {
     drag.active = true;
-    drag.grabFraction = heightFractionNear(x, y, state);
+    drag.material = material;
+    drag.originX = paletteSlotX();
+    drag.originY = paletteSlotY(material);
     drag.x = x;
     drag.y = y;
     canvas.setPointerCapture(e.pointerId);
@@ -185,10 +217,11 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
 
-  // hovering near the mast (not yet dragging) still gets a cursor cue —
-  // the only pre-click signal that it's the thing to grab
-  const nearMast = (phase === "playing" || phase === "practice") && distanceToMast(x, y, state) < 40;
-  canvas.style.cursor = nearMast ? "grab" : "pointer";
+  // hovering near a pickable palette item still gets a cursor cue — the
+  // only pre-click signal that it's the thing to grab
+  const hoverable =
+    (phase === "playing" || phase === "practice") && paletteHit(x, y) !== null;
+  canvas.style.cursor = hoverable ? "grab" : "pointer";
 });
 
 canvas.addEventListener("pointerup", () => {
@@ -196,22 +229,22 @@ canvas.addEventListener("pointerup", () => {
   drag.active = false;
   canvas.style.cursor = "pointer";
 
-  const anchor =
-    drag.grabFraction !== null ? pointOnMast(drag.grabFraction, state) : { x: drag.x, y: drag.y };
+  const material = drag.material;
+  const { index, distance } = nearestAnchor(drag.x, drag.y);
+  const anchor = state.anchors[index];
+  const validTarget = distance < 50 && anchor.material === null;
 
-  if (
-    (phase === "playing" || phase === "practice") &&
-    drag.grabFraction !== null &&
-    state.braces.length < MAX_BRACES &&
-    Math.abs(drag.y - groundY()) < 90
-  ) {
-    state = addBrace(state, drag.grabFraction);
+  if ((phase === "playing" || phase === "practice") && material && validTarget) {
+    state = placeMaterial(state, index, material);
+    playPlaceClick();
   } else {
-    // the drag didn't land — show it fading instead of just vanishing
-    failedDrop = { anchor, end: { x: drag.x, y: drag.y } };
+    failedDrop = {
+      anchor: { x: drag.originX, y: drag.originY },
+      end: { x: drag.x, y: drag.y },
+    };
     failedDropUntil = now + 0.35;
   }
-  drag.grabFraction = null;
+  drag.material = null;
 });
 
 // --- render ---
@@ -226,21 +259,21 @@ function draw() {
   ctx!.translate(shake.x, shake.y);
 
   drawSky();
-  drawWindParticles();
+  drawRain();
   drawGround();
-  drawBraces();
-  drawMast();
+  drawTent();
+  drawAnchors();
   drawActiveDrag();
   drawFailedDrop();
-  drawBraceBudget();
+  drawPalette();
   drawFlash();
 
   ctx!.restore();
 }
 
 function skyProgress(): number {
-  if (phase === "won") return Math.min(1, (now - phaseChangedAt) / 2.5) * 0.5 + 0.5;
-  return Math.min(0.5, state.time / WIN_TIME) ;
+  if (phase === "survived") return Math.min(1, (now - phaseChangedAt) / 2.5) * 0.5 + 0.5;
+  return Math.min(0.5, state.time / SURVIVE_TIME);
 }
 
 function lerpColor(a: [number, number, number], b: [number, number, number], t: number) {
@@ -249,7 +282,7 @@ function lerpColor(a: [number, number, number], b: [number, number, number], t: 
 
 function drawSky() {
   if (phase === "practice") {
-    // A calmer dusk tint than the real run's night sky — the only signal
+    // A calmer dusk tint than the real run's storm sky — the only signal
     // (wordless) that nothing here can actually go wrong yet.
     const grad = ctx!.createLinearGradient(0, 0, 0, groundY());
     grad.addColorStop(0, "rgb(48, 52, 82)");
@@ -260,14 +293,14 @@ function drawSky() {
   }
 
   const t = skyProgress();
-  const nightTop: [number, number, number] = [10, 14, 30];
-  const nightBottom: [number, number, number] = [30, 34, 55];
-  const dawnTop: [number, number, number] = [255, 200, 140];
-  const dawnBottom: [number, number, number] = [255, 235, 205];
+  const stormTop: [number, number, number] = [24, 26, 34];
+  const stormBottom: [number, number, number] = [44, 46, 58];
+  const calmTop: [number, number, number] = [180, 205, 225];
+  const calmBottom: [number, number, number] = [225, 235, 235];
 
   const grad = ctx!.createLinearGradient(0, 0, 0, groundY());
-  grad.addColorStop(0, lerpColor(nightTop, dawnTop, t));
-  grad.addColorStop(1, lerpColor(nightBottom, dawnBottom, t));
+  grad.addColorStop(0, lerpColor(stormTop, calmTop, t));
+  grad.addColorStop(1, lerpColor(stormBottom, calmBottom, t));
   ctx!.fillStyle = grad;
   ctx!.fillRect(0, 0, width, groundY());
 }
@@ -289,100 +322,155 @@ function drawGround() {
   ctx!.fillRect(0, groundY(), width, height - groundY());
 }
 
-let particles: { x: number; y: number; speed: number }[] = [];
-function ensureParticles() {
-  if (particles.length) return;
-  for (let i = 0; i < 40; i++) {
-    particles.push({
-      x: Math.random() * width,
+interface RainDrop {
+  x: number;
+  y: number;
+  speed: number;
+}
+let rain: RainDrop[] = [];
+function ensureRain() {
+  if (rain.length) return;
+  for (let i = 0; i < 60; i++) {
+    rain.push({
+      x: paletteWidth() + Math.random() * (width - paletteWidth()),
       y: Math.random() * groundY(),
-      speed: 0.5 + Math.random(),
+      speed: 0.6 + Math.random(),
     });
   }
 }
-function drawWindParticles() {
-  ensureParticles();
-  const wind =
-    phase === "playing" || phase === "practice" ? windTorque(state.time) : 0.15;
-  ctx!.strokeStyle = "rgba(255,255,255,0.25)";
+function drawRain() {
+  ensureRain();
+  const intensity = phase === "playing" || phase === "practice" ? stormMagnitude(state.time) : 0.15;
+  ctx!.strokeStyle = "rgba(220,230,255,0.35)";
   ctx!.lineWidth = 1;
-  for (const p of particles) {
-    const len = 12 + wind * 20;
+  for (const drop of rain) {
+    const len = 10 + intensity * 22;
     ctx!.beginPath();
-    ctx!.moveTo(p.x, p.y);
-    ctx!.lineTo(p.x - len, p.y + len * 0.15);
+    ctx!.moveTo(drop.x, drop.y);
+    ctx!.lineTo(drop.x - len * 0.25, drop.y + len);
     ctx!.stroke();
-    p.x -= wind * 60 * p.speed * (1 / 60);
-    if (p.x < -20) {
-      p.x = width + 20;
-      p.y = Math.random() * groundY();
+    drop.y += intensity * 90 * drop.speed * (1 / 60);
+    drop.x -= intensity * 20 * drop.speed * (1 / 60);
+    if (drop.y > groundY()) {
+      drop.y = -10;
+      drop.x = paletteWidth() + Math.random() * (width - paletteWidth());
     }
   }
 }
 
-function drawBraces() {
-  ctx!.strokeStyle = "rgba(210,190,150,0.9)";
-  ctx!.lineWidth = 4;
-  for (const brace of state.braces) {
-    const anchor = pointOnMast(brace.heightFraction, state);
-    // ground point on whichever side the anchor leans away from centre
-    const side = anchor.x >= mastX() ? -1 : 1;
-    const groundPoint = { x: mastX() + side * mastLength() * 0.35, y: groundY() };
-    ctx!.beginPath();
-    ctx!.moveTo(anchor.x, anchor.y);
-    ctx!.lineTo(groundPoint.x, groundPoint.y);
-    ctx!.stroke();
-  }
-}
+function drawTent() {
+  const base = state.anchors.map((a) => ({ x: anchorX(a.side), y: groundY() }));
+  const peak = { x: tentCenterX(), y: peakY() };
 
-function drawMast() {
-  const base = { x: mastX(), y: groundY() };
-  const top = pointOnMast(1, state);
+  ctx!.fillStyle = phase === "collapsed" ? "rgba(60,45,35,0.5)" : "rgba(150,110,70,0.85)";
+  ctx!.strokeStyle = "rgba(90,65,40,0.9)";
+  ctx!.lineWidth = 2;
 
-  const nearSnap = Math.abs(state.angle) / SNAP_ANGLE;
-  const hue = phase === "snapped" ? 0 : 40;
-  ctx!.strokeStyle = phase === "snapped" ? "#3a2a20" : `hsl(${hue}, 30%, ${25 + nearSnap * 10}%)`;
-  ctx!.lineWidth = 14;
-  ctx!.lineCap = "round";
-
-  if (phase === "snapped") {
-    const breakPoint = pointOnMast(0.55, state);
-    ctx!.beginPath();
-    ctx!.moveTo(base.x, base.y);
-    ctx!.lineTo(breakPoint.x, breakPoint.y);
-    ctx!.stroke();
-
+  if (phase === "collapsed") {
     const fallProgress = Math.min(1, (now - phaseChangedAt) / 1.2);
-    const fallAngle = state.angle + fallProgress * 1.2 * Math.sign(state.angle || 1);
-    const len = mastLength() * 0.45;
-    const tip = {
-      x: breakPoint.x + Math.sin(fallAngle) * len,
-      y: breakPoint.y - Math.cos(fallAngle) * len,
-    };
+    const collapsedPeak = { x: peak.x, y: peak.y + (groundY() - peak.y) * fallProgress };
     ctx!.beginPath();
-    ctx!.moveTo(breakPoint.x, breakPoint.y);
-    ctx!.lineTo(tip.x, tip.y);
+    ctx!.moveTo(base[0].x, base[0].y);
+    ctx!.lineTo(collapsedPeak.x, collapsedPeak.y);
+    ctx!.lineTo(base[3].x, base[3].y);
+    ctx!.closePath();
+    ctx!.fill();
     ctx!.stroke();
-  } else {
+    return;
+  }
+
+  // two fabric faces, front pair and back pair, meeting at the shared peak
+  ctx!.beginPath();
+  ctx!.moveTo(base[0].x, base[0].y);
+  ctx!.lineTo(peak.x, peak.y);
+  ctx!.lineTo(base[1].x, base[1].y);
+  ctx!.closePath();
+  ctx!.fill();
+  ctx!.stroke();
+
+  ctx!.beginPath();
+  ctx!.moveTo(base[2].x, base[2].y);
+  ctx!.lineTo(peak.x, peak.y);
+  ctx!.lineTo(base[3].x, base[3].y);
+  ctx!.closePath();
+  ctx!.fill();
+  ctx!.stroke();
+
+  ctx!.beginPath();
+  ctx!.moveTo(peak.x, peak.y);
+  ctx!.lineTo(tentCenterX(), groundY());
+  ctx!.stroke();
+}
+
+// Each anchor's colour and jitter reflect its own live strain — the
+// wordless "what's going wrong" feedback: a calm anchor sits still and
+// pale, a strained one reddens and shakes before it ever tears.
+function drawAnchors() {
+  if (phase === "collapsed") return;
+  for (const anchor of state.anchors) {
+    const t = Math.min(1, Math.abs(anchor.strain) / TEAR_STRAIN);
+    const jitter = t > 0.5 ? (Math.random() - 0.5) * 6 * (t - 0.5) * 2 : 0;
+    const x = anchorX(anchor.side) + jitter;
+    const y = groundY();
     ctx!.beginPath();
-    ctx!.moveTo(base.x, base.y);
-    ctx!.lineTo(top.x, top.y);
-    ctx!.stroke();
+    ctx!.arc(x, y, 8, 0, Math.PI * 2);
+    ctx!.fillStyle = lerpColor([210, 190, 150], [200, 40, 30], t);
+    ctx!.fill();
+    if (anchor.material) {
+      ctx!.fillStyle = anchor.material === "rock" ? "#6b6b6b" : "#c9a24a";
+      ctx!.beginPath();
+      ctx!.arc(x, y, 4, 0, Math.PI * 2);
+      ctx!.fill();
+    }
   }
 }
 
-// A dragging player sees the attempted brace line immediately, before it's
-// committed — the thing that was silently missing before this fix. Colour
-// flips to a warning red once the release point is outside the landing zone.
+function drawPalette() {
+  ctx!.fillStyle = "rgba(20,20,30,0.35)";
+  ctx!.fillRect(0, 0, paletteWidth(), height);
+
+  for (const material of ["rock", "peg"] as MaterialKind[]) {
+    const x = paletteSlotX();
+    const y = paletteSlotY(material);
+    const remaining = state.stock[material];
+    const isDragging = drag.active && drag.material === material;
+
+    ctx!.globalAlpha = remaining > 0 && !isDragging ? 1 : 0.25;
+    ctx!.fillStyle = material === "rock" ? "#6b6b6b" : "#c9a24a";
+    ctx!.beginPath();
+    if (material === "rock") {
+      ctx!.arc(x, y, 18, 0, Math.PI * 2);
+    } else {
+      ctx!.fillRect(x - 6, y - 20, 12, 40);
+    }
+    ctx!.fill();
+    ctx!.globalAlpha = 1;
+
+    // remaining stock shown as a small row of dots, same language as the
+    // brace-budget dots the mast version used
+    const dotGap = 10;
+    const startX = x - ((MATERIAL_STOCK[material] - 1) * dotGap) / 2;
+    for (let i = 0; i < MATERIAL_STOCK[material]; i++) {
+      ctx!.beginPath();
+      ctx!.arc(startX + i * dotGap, y + 34, 3, 0, Math.PI * 2);
+      ctx!.fillStyle = i < remaining ? "rgba(255,235,205,0.9)" : "rgba(255,235,205,0.25)";
+      ctx!.fill();
+    }
+  }
+}
+
+// A dragging player sees the attempted placement line immediately, before
+// it's committed. Colour flips to a warning red once the release point
+// isn't over a valid, empty anchor.
 function drawActiveDrag() {
-  if (!drag.active || drag.grabFraction === null) return;
-  const anchor = pointOnMast(drag.grabFraction, state);
-  const valid = Math.abs(drag.y - groundY()) < 90;
+  if (!drag.active || !drag.material) return;
+  const { distance, index } = nearestAnchor(drag.x, drag.y);
+  const valid = distance < 50 && state.anchors[index].material === null;
   ctx!.strokeStyle = valid ? "rgba(255,235,205,0.95)" : "rgba(255,120,120,0.85)";
   ctx!.lineWidth = 3;
   ctx!.setLineDash([6, 6]);
   ctx!.beginPath();
-  ctx!.moveTo(anchor.x, anchor.y);
+  ctx!.moveTo(drag.originX, drag.originY);
   ctx!.lineTo(drag.x, drag.y);
   ctx!.stroke();
   ctx!.setLineDash([]);
@@ -392,8 +480,8 @@ function drawActiveDrag() {
   ctx!.fill();
 }
 
-// A drop that missed the landing zone still leaves a brief mark: the
-// attempted line fades out over failedDropUntil instead of vanishing outright.
+// A drop that missed every anchor still leaves a brief mark: the attempted
+// line fades out over failedDropUntil instead of vanishing outright.
 function drawFailedDrop() {
   if (!failedDrop || now >= failedDropUntil) return;
   const alpha = Math.max(0, (failedDropUntil - now) / 0.35) * 0.8;
@@ -407,20 +495,6 @@ function drawFailedDrop() {
   ctx!.setLineDash([]);
 }
 
-function drawBraceBudget() {
-  const remaining = MAX_BRACES - state.braces.length;
-  const dotRadius = 5;
-  const gap = 16;
-  const startX = mastX() - ((MAX_BRACES - 1) * gap) / 2;
-  const y = groundY() + 26;
-  for (let i = 0; i < MAX_BRACES; i++) {
-    ctx!.beginPath();
-    ctx!.arc(startX + i * gap, y, dotRadius, 0, Math.PI * 2);
-    ctx!.fillStyle = i < remaining ? "rgba(255,235,205,0.9)" : "rgba(255,235,205,0.25)";
-    ctx!.fill();
-  }
-}
-
 // --- loop ---
 let last = performance.now();
 function frame(t: number) {
@@ -430,10 +504,11 @@ function frame(t: number) {
 
   if (phase === "practice") {
     state = step(state, dt);
-    // never allowed to snap here — a safe window to try the mechanic —
-    // and it ends the moment the player braces on their own, or after a
-    // fixed window if they haven't
-    if (state.braces.length > 0 || state.time >= PRACTICE_DURATION) {
+    // never allowed to collapse here — a safe window to try the mechanic —
+    // and it ends the moment the player places a material on their own, or
+    // after a fixed window if they haven't
+    const placed = state.anchors.some((a) => a.material !== null);
+    if (placed || state.time >= PRACTICE_DURATION) {
       state = initialState();
       phase = "playing";
       phaseChangedAt = now;
@@ -442,13 +517,13 @@ function frame(t: number) {
     }
   } else if (phase === "playing") {
     state = step(state, dt);
-    if (hasSnapped(state)) {
-      phase = "snapped";
+    if (hasCollapsed(state)) {
+      phase = "collapsed";
       phaseChangedAt = now;
       shakeUntil = now + 0.4;
       playSnapThud();
-    } else if (hasWon(state)) {
-      phase = "won";
+    } else if (hasSurvived(state)) {
+      phase = "survived";
       phaseChangedAt = now;
     }
   }
