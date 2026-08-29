@@ -2,7 +2,6 @@ html,
 body {
   margin: 0;
   height: 100%;
-  overflow: hidden;
   background: #0a0e1e;
 }
 
@@ -10,17 +9,6 @@ main {
   height: 100%;
 }
 
-#scene {
-  display: block;
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-  cursor: pointer;
-}
-
-/* Kept in the DOM for the invariants (nav landmark, one h1) and for screen
-   readers, but off-screen: the spec rules out any on-page instruction, and
-   this is scaffolding, not a hint. */
 .visually-hidden {
   position: absolute;
   width: 1px;
