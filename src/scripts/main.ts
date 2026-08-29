@@ -169,10 +169,27 @@ let pendingLetter: string | null = null;
 let pendingLetterIndex = 0;
 let lastTickIndex = 0;
 
+// Row height is viewport-relative (clamp(...vmin...)), so it isn't a
+// one-time constant — a resize (or a mobile browser's chrome hiding, or a
+// font swap right after the very first measurement) changes the real row
+// height while the reel keeps using the old one, and the landing offset
+// then points at a pixel between two rows instead of a row itself. Re-snap
+// whenever the measured height actually changes, not just the first time.
 function measureLetterHeight(): void {
   const first = reelStrip.firstElementChild as HTMLElement | null;
-  letterHeight = first ? first.getBoundingClientRect().height : 0;
+  const measured = first ? first.getBoundingClientRect().height : 0;
+  if (measured === letterHeight || measured === 0) return;
+  letterHeight = measured;
+  if (spinning) return; // mid-spin math already targets a row count, not a pixel offset
+  const index =
+    state.phase === "idle" ? 0 : Math.max(0, ALPHABET.indexOf(state.letter ?? ""));
+  reelOffset = index * letterHeight;
+  applyReelTransform(reelOffset);
 }
+
+window.addEventListener("resize", () => {
+  measureLetterHeight();
+});
 
 function applyReelTransform(offset: number): void {
   reelStrip.style.transform = `translateY(-${offset}px)`;
