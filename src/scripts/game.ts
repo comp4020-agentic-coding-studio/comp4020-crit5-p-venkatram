@@ -1,7 +1,7 @@
 import { isKnownAnimal } from "./animals";
 import { isColor } from "./colors";
-import { isDictionaryWord } from "./dictionary";
-import { isKnownPlace } from "./places";
+import { isKnownPlace, isObviousPlace } from "./places";
+import { isKnownThing } from "./things";
 
 export type Category = "name" | "place" | "animal" | "thing";
 export const CATEGORIES: Category[] = ["name", "place", "animal", "thing"];
@@ -92,25 +92,27 @@ export function isValidWord(
   // English dictionary won't do here: country and city names are proper
   // nouns, so a plain dictionary check would reject almost every real one.
   if (category === "place" && !isKnownPlace(normalized)) return false;
-  // "Animal" accepts animals, birds, and insects — checked against both a
-  // real dictionary (so it's an actual word, not just letters) and a
-  // curated list of real creatures (so it's actually one of those three).
-  if (
-    category === "animal" &&
-    (!isDictionaryWord(normalized) || !isKnownAnimal(normalized))
-  ) {
+  // "Animal" accepts animals, birds, and insects — checked against a real
+  // dictionary's own classification (WordNet's noun.animal category), so
+  // it's both an actual word and actually one of those three.
+  if (category === "animal" && !isKnownAnimal(normalized)) {
     return false;
   }
-  // "Thing" has no category-specific list of its own, so a real dictionary
-  // is what keeps it from being any arbitrary string — plus it's explicitly
-  // not a name, a place, an animal, or a color (a color passes the
-  // dictionary check but isn't an object): reject a "thing" that just
-  // reuses this round's own name/place/animal answer, or that happens to
-  // be a recognised place name or color.
+  // "Thing" means a concrete object — checked against a real dictionary's
+  // classification (WordNet's artifact/object/food/plant/body/substance/
+  // shape categories) rather than any dictionary word, so an abstract
+  // concept or a stray verb doesn't qualify — plus it's explicitly not an
+  // *obvious* place (a country, or a hand-curated city/region) or a color
+  // (a color can be a real object category, e.g. gold, but isn't wanted as
+  // an answer here), or a reuse of this round's own name/place/animal
+  // answer. Deliberately checks isObviousPlace rather than isKnownPlace:
+  // the generated city/state lists are large enough that plenty of common
+  // words ("van", "bath") are also somebody's small city, and that
+  // shouldn't block the everyday reading of the word.
   if (
     category === "thing" &&
-    (!isDictionaryWord(normalized) ||
-      isKnownPlace(normalized) ||
+    (!isKnownThing(normalized) ||
+      isObviousPlace(normalized) ||
       isColor(normalized) ||
       normalized === state.entries.name ||
       normalized === state.entries.place ||

@@ -10,19 +10,22 @@
     "typecheck": "astro check",
     "check": "pnpm typecheck && pnpm build && vitest run",
     "check:evidence": "node scripts/check-evidence.ts",
+    "generate:places": "node scripts/generate-places.mjs",
+    "generate:word-categories": "node scripts/generate-word-categories.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/jsdom": "^27.0.0",
     "@types/node": "^24.0.0",
+    "all-the-cities": "^3.1.0",
     "astro": "^7.1.6",
+    "iso-3166-2": "^1.0.0",
     "jsdom": "^29.1.1",
+    "pbf": "^5.1.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wordnet-db": "^3.1.14"
   },
-  "packageManager": "pnpm@11.9.0",
-  "dependencies": {
-    "an-array-of-english-words": "^2.0.0"
-  }
+  "packageManager": "pnpm@11.9.0"
 }
