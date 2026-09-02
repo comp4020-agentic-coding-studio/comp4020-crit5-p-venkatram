@@ -75,49 +75,6 @@ main {
   flex: none;
 }
 
-.link {
-  --gap: 0.65rem;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: calc(46% - var(--gap));
-  height: 2px;
-  background: #34407a;
-  transform-origin: left center;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
-}
-
-.link::after {
-  content: "";
-  position: absolute;
-  right: -2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 6px 0 6px 10px;
-  border-color: transparent transparent transparent #4a5aa8;
-}
-
-/* Offset each line outward by --gap so it starts clear of the hub circle
-   rather than tucking underneath it. */
-.link-nw {
-  transform: rotate(225deg) translateX(var(--gap));
-}
-
-.link-ne {
-  transform: rotate(315deg) translateX(var(--gap));
-}
-
-.link-sw {
-  transform: rotate(135deg) translateX(var(--gap));
-}
-
-.link-se {
-  transform: rotate(45deg) translateX(var(--gap));
-}
-
 /* --- hub / letter picker --- */
 
 #hub {
@@ -126,8 +83,8 @@ main {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: clamp(4.5rem, 20vmin, 7rem);
-  height: clamp(4.5rem, 20vmin, 7rem);
+  width: clamp(6rem, 28vmin, 10rem);
+  height: clamp(6rem, 28vmin, 10rem);
   border: none;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #1c2650, #10152e 75%);
@@ -166,6 +123,26 @@ main {
     0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
+/* The reel is actively picking a letter — outrank the hover/active glow
+   above so the hub reads as "busy" regardless of where the pointer is. */
+#hub.spinning {
+  box-shadow:
+    0 0 0 2px #ffd166 inset,
+    0 0 28px rgba(255, 209, 102, 0.65),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  animation: hub-pick 0.5s ease-in-out infinite;
+}
+
+@keyframes hub-pick {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
 #ring {
   position: absolute;
   inset: 0;
@@ -191,9 +168,9 @@ main {
 
 #reel-window {
   position: relative;
-  height: clamp(2rem, 5.5vmin, 2.8rem);
+  height: clamp(2.6rem, 7.5vmin, 3.8rem);
   overflow: hidden;
-  width: clamp(2rem, 5.5vmin, 2.8rem);
+  width: clamp(2.6rem, 7.5vmin, 3.8rem);
 }
 
 /* A fixed "payline" bracketing the one letter that counts, top and bottom,
@@ -227,9 +204,9 @@ main {
 }
 
 #reel-strip span {
-  height: clamp(2rem, 5.5vmin, 2.8rem);
-  line-height: clamp(2rem, 5.5vmin, 2.8rem);
-  font-size: clamp(1.3rem, 3.6vmin, 1.8rem);
+  height: clamp(2.6rem, 7.5vmin, 3.8rem);
+  line-height: clamp(2.6rem, 7.5vmin, 3.8rem);
+  font-size: clamp(2rem, 5.8vmin, 2.9rem);
   font-weight: 800;
   color: #ffd166;
   text-shadow: 0 0 12px rgba(255, 209, 102, 0.5);
@@ -242,6 +219,17 @@ main {
   flex-direction: column;
   align-items: center;
   gap: 0.3rem;
+  padding: 0.5rem 0.5rem 0.65rem;
+  box-sizing: border-box;
+  background: #131a37;
+  border: 2px solid #2c3766;
+  border-radius: 0.9rem;
+  box-shadow:
+    0 0 14px rgba(91, 111, 216, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .node-nw {
@@ -279,35 +267,56 @@ main {
   width: 100%;
   box-sizing: border-box;
   text-align: center;
-  background: #131a37;
-  border: 2px solid #2c3766;
-  border-radius: 0.7rem;
+  background: transparent;
+  border: none;
+  border-top: 1px solid #2c3766;
   color: #e8ecff;
   font-size: clamp(0.85rem, 2.8vmin, 1.05rem);
-  padding: 0.55rem 0.4rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) inset;
+  padding: 0.4rem 0.3rem 0.05rem;
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .node input:focus {
   outline: none;
-  border-color: #4a5aa8;
-  box-shadow: 0 0 0 3px rgba(74, 90, 168, 0.35);
+}
+
+.node:focus-within {
+  border-color: #5b6fd8;
+  box-shadow:
+    0 0 0 3px rgba(91, 111, 216, 0.35),
+    0 0 14px rgba(91, 111, 216, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.node:focus-within input {
+  border-color: #5b6fd8;
+}
+
+.node.locked {
+  border-color: #4ade80;
+  box-shadow:
+    0 0 16px rgba(74, 222, 128, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .node.locked input {
   border-color: #4ade80;
   color: #4ade80;
   opacity: 0.9;
-  box-shadow: 0 0 12px rgba(74, 222, 128, 0.25);
+}
+
+.node.rejected {
+  animation: shake 0.3s;
+  border-color: #f87171;
+  box-shadow:
+    0 0 16px rgba(248, 113, 113, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .node.rejected input {
-  animation: shake 0.3s;
   border-color: #f87171;
-  box-shadow: 0 0 12px rgba(248, 113, 113, 0.35);
 }
 
 @keyframes shake {
@@ -325,7 +334,7 @@ main {
 
 /* --- loss overlay --- */
 
-#app.lost .node input,
+#app.lost .node,
 #app.lost #hub {
   pointer-events: none;
   opacity: 0.4;
@@ -396,6 +405,48 @@ main {
   font-weight: 800;
   font-size: clamp(0.95rem, 2.5vmin, 1.15rem);
   color: #ffd166;
+  min-width: 1.2em;
+  text-align: left;
+}
+
+/* --- best-score badge (always visible) --- */
+
+/* Sits to the left of the refresh/end buttons, in the same bottom-right
+   cluster — right offset clears both circular buttons plus a gap. */
+#best-badge {
+  position: fixed;
+  bottom: 0.75rem;
+  right: 6.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #141a33;
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  box-shadow: 0 0 0 2px #2c3766 inset;
+}
+
+#best-badge::before {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.7);
+}
+
+#best-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8891c9;
+}
+
+#best-live {
+  font-weight: 800;
+  font-size: clamp(0.95rem, 2.5vmin, 1.15rem);
+  color: #4ade80;
   min-width: 1.2em;
   text-align: left;
 }
@@ -479,10 +530,10 @@ main {
   right: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
   background: #141a33;
-  border-radius: 999px;
-  padding: 0.4rem 1rem 0.4rem 0.4rem;
+  border-radius: 50%;
+  padding: 0.4rem;
   box-shadow: 0 0 0 2px #2c3766 inset;
 }
 
@@ -490,14 +541,6 @@ main {
   flex: none;
   width: 1.7rem;
   height: 1.7rem;
-}
-
-#brand span {
-  font-weight: 800;
-  font-size: clamp(0.8rem, 2.2vmin, 0.95rem);
-  letter-spacing: 0.01em;
-  color: #e8ecff;
-  white-space: nowrap;
 }
 
 /* --- refresh / end --- */

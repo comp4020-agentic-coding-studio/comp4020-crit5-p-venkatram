@@ -27,11 +27,6 @@ import "../styles/styles.css";
       <div class="layout">
         <div id="app">
           <div id="map">
-            <div class="link link-nw"></div>
-            <div class="link link-ne"></div>
-            <div class="link link-sw"></div>
-            <div class="link link-se"></div>
-
             <button id="hub" type="button" aria-label="A reel cycling through the alphabet.">
               <svg id="ring" viewBox="0 0 100 100" aria-hidden="true">
                 <circle class="ring-track" cx="50" cy="50" r="45" />
@@ -80,12 +75,16 @@ import "../styles/styles.css";
 
     <div id="score-badge"><span id="score-live">0</span></div>
 
+    <div id="best-badge" aria-label="Best score this browser">
+      <span id="best-label">Best</span>
+      <span id="best-live">0</span>
+    </div>
+
     <div id="brand" aria-hidden="true">
       <svg viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="11" fill="#1c2650" stroke="#4a5aa8" stroke-width="1.5"></circle>
         <text x="12" y="16.5" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="12" fill="#ffd166">L</text>
       </svg>
-      <span>Letter Head</span>
     </div>
 
     <button id="end-game" type="button" aria-label="End">

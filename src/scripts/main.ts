@@ -13,6 +13,7 @@ import {
 } from "./game";
 
 const STORAGE_KEY = "npat-game-v1";
+const BEST_SCORE_KEY = "npat-best-score-v1";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const REEL_REPEATS = 8;
 const IDLE_SPEED_PX_S = 22;
@@ -73,6 +74,25 @@ function save(state: GameState): void {
     localStorage.setItem(STORAGE_KEY, serialize(state));
   } catch {
     // storage unavailable — the game still works, just unsaved
+  }
+}
+
+// Kept separate from the main save slot: a fresh game (or a cleared one)
+// still has a best score worth remembering, so it can't live inside the
+// same record that resetGame() wipes.
+function loadBestScore(): number {
+  try {
+    return Number(localStorage.getItem(BEST_SCORE_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveBestScore(value: number): void {
+  try {
+    localStorage.setItem(BEST_SCORE_KEY, String(value));
+  } catch {
+    // storage unavailable — the best score just won't survive a refresh
   }
 }
 
@@ -176,6 +196,7 @@ const ringProgress = document.getElementById(
 ) as unknown as SVGCircleElement;
 const scoreEl = document.getElementById("score") as HTMLSpanElement;
 const scoreLive = document.getElementById("score-live") as HTMLSpanElement;
+const bestLive = document.getElementById("best-live") as HTMLSpanElement;
 const historyList = document.getElementById("history-list") as HTMLOListElement;
 const lostBanner = document.getElementById("lost-banner") as HTMLButtonElement;
 const refreshButton = document.getElementById("refresh") as HTMLButtonElement;
@@ -244,6 +265,7 @@ function easeOutCubic(t: number): number {
 function startSpin(): void {
   if (spinning || state.phase !== "idle" || letterHeight === 0) return;
   spinning = true;
+  hub.classList.add("spinning");
   hub.disabled = true;
   const letterIndex = Math.floor(Math.random() * ALPHABET.length);
   pendingLetter = ALPHABET[letterIndex];
@@ -316,18 +338,32 @@ function render(gs: GameState): void {
   hub.disabled = gs.phase !== "idle" || spinning;
   scoreEl.textContent = String(gs.score);
   scoreLive.textContent = String(gs.score);
+  if (gs.score > bestScore) {
+    bestScore = gs.score;
+    saveBestScore(bestScore);
+  }
+  bestLive.textContent = String(bestScore);
   renderHistory(gs);
   updateRing(gs);
+
+  // The word that completes a round locks in and resets `entries` to null
+  // in the very same state transition (see submitWord/completeRound in
+  // game.ts) -- so without this, the box the player just filled in would
+  // blank out the instant it was accepted, with no visible confirmation it
+  // counted. Between rounds, keep showing the round that was just completed
+  // (it's the last entry in history) until the next spin starts a new one.
+  const lastRound =
+    gs.phase === "idle" ? gs.history[gs.history.length - 1] ?? null : null;
 
   for (const category of CATEGORIES) {
     const node = nodes.get(category)!;
     const input = inputs.get(category)!;
-    const entry = gs.entries[category];
-    const locked = entry !== null;
+    const entry = gs.entries[category] ?? (lastRound ? lastRound.entries[category] : null);
+    const locked = gs.entries[category] !== null || lastRound !== null;
     node.classList.toggle("locked", locked);
     input.disabled = gs.phase !== "active" || locked;
     if (document.activeElement !== input) {
-      input.value = entry !== null ? displayWord(entry) : "";
+      input.value = entry ? displayWord(entry) : "";
     }
   }
 }
@@ -403,6 +439,7 @@ for (const [category, input] of inputs) {
 
 function resetGame(): void {
   spinning = false;
+  hub.classList.remove("spinning");
   pendingLetter = null;
   state = initialState();
   localStorage.removeItem(STORAGE_KEY);
@@ -444,6 +481,7 @@ endButton.addEventListener("click", handleEndClick);
 // --- main loop ------------------------------------------------------
 
 let state: GameState = load();
+let bestScore = loadBestScore();
 let lastFrame = performance.now();
 let lastSave = performance.now();
 
@@ -466,6 +504,7 @@ function frame(now: number): void {
     }
     if (t >= 1) {
       spinning = false;
+      hub.classList.remove("spinning");
       // Snap to the exact letter row rather than trusting the eased
       // interpolation's final float — the slot has to land on a precise
       // letter, never a pixel between two.
