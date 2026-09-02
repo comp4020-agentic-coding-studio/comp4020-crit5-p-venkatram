@@ -446,13 +446,16 @@ function resetGame(): void {
   render(state);
 }
 
-// Only a round in progress has anything worth losing — the timer's already
-// autosaving it every second, so refreshing from "idle" or "lost" just
-// starts clean with nothing to confirm.
+// A banked score or history from earlier rounds is just as much at stake as
+// an in-progress round — resetGame() wipes the whole session either way, so
+// anything already on the board (not just an unfinished round) needs to be
+// confirmed away.
 function handleRefreshClick(): void {
+  const hasProgress =
+    state.phase === "active" || state.score > 0 || state.history.length > 0;
   if (
-    state.phase === "active" &&
-    !window.confirm("Abandon this round and lose your unsaved progress?")
+    hasProgress &&
+    !window.confirm("Start over and lose your current score and history?")
   ) {
     return;
   }
